@@ -1,0 +1,173 @@
+import { ExternalLink, FileText, History, Shield } from 'lucide-react';
+
+import { Button } from '@/components/ui/Button';
+import { propertyDetailCopy, propertyDetailLayout } from '@/lib/constants/property-detail';
+import { getFractionalSoldPercent, getPublicRegistrySummary } from '@/lib/property-detail';
+import { getPublicRegistryExplorerUrl } from '@/lib/registry-explorer';
+import { cn, formatCurrency, formatDate } from '@/lib/utils';
+import type { Property } from '@/types';
+import type { RealDocument } from '@/hooks/usePropertyDetail';
+
+import { DetailFactGrid, DetailPanel } from './DetailPanel';
+
+interface PropertyDetailRecordsProps {
+  property: Property;
+  documents: RealDocument[];
+}
+
+export default function PropertyDetailRecords({ property }: PropertyDetailRecordsProps) {
+  const registrySummary = getPublicRegistrySummary(property);
+  const explorerUrl = getPublicRegistryExplorerUrl(property);
+  const soldPercent = getFractionalSoldPercent(property);
+  const hasDocuments = documents.length > 0 || property.documents.length > 0;
+  const useRealDocs  = documents.length > 0;
+  const hasHistory = property.timeline.length > 0;
+
+  return (
+    <div className="space-y-6 2xl:space-y-8 3xl:space-y-8 4xl:space-y-10">
+      <DetailPanel title={propertyDetailCopy.mainOwnershipTitle} icon={Shield}>
+        <div
+          className={cn(
+            'mb-5 flex gap-3 rounded-xl border px-4 py-3',
+            property.blockchain.isVerified
+              ? 'border-success/30 bg-success/10'
+              : 'border-warning/30 bg-warning/10',
+          )}
+        >
+          <Shield className="mt-0.5 size-5 shrink-0 text-accent" />
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              {property.blockchain.isVerified
+                ? propertyDetailCopy.verifiedTitle
+                : propertyDetailCopy.pendingTitle}
+            </p>
+            <p className="mt-0.5 text-xs text-muted">
+              {property.blockchain.isVerified
+                ? propertyDetailCopy.verifiedBody
+                : propertyDetailCopy.pendingBody}
+            </p>
+          </div>
+        </div>
+
+        <DetailFactGrid facts={registrySummary} />
+
+        {explorerUrl ? (
+          <div className="mt-5">
+            <Button variant="outline" size="md" href={explorerUrl} className="w-full sm:w-auto">
+              <ExternalLink className="size-4" />
+              {propertyDetailCopy.viewOnExplorerLabel}
+            </Button>
+          </div>
+        ) : null}
+      </DetailPanel>
+
+      {hasDocuments && (
+        <DetailPanel title={propertyDetailCopy.mainDocumentsTitle} icon={FileText}>
+          <ul className="space-y-2">
+            {property.documents.map((doc) => (
+              <li
+                key={doc.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <FileText className="size-4 shrink-0 text-accent" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
+                    <p className="text-xs text-muted">
+                      {doc.type} · {formatDate(doc.uploadedAt)}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  href={doc.url}
+                  aria-label={`Open ${doc.name}`}
+                >
+                  <ExternalLink className="size-4" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </DetailPanel>
+      )}
+
+      {hasDocuments && (
+        <DetailPanel title={propertyDetailCopy.mainDocumentsTitle} icon={FileText}>
+          <ul className="space-y-2">
+            {useRealDocs
+              ? documents.map((doc) => (
+                  <li
+                    key={doc.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-3 py-2.5"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <FileText className="size-4 shrink-0 text-accent" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
+                        <p className="text-xs text-muted">
+                          {doc.mimeType} {doc.uploadedAt ? `· ${formatDate(doc.uploadedAt)}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    
+                      href={`data:${doc.mimeType};base64,${doc.data}`}
+                      download={doc.name}
+                      aria-label={`Download ${doc.name}`}
+                      className="inline-flex items-center justify-center size-9 shrink-0 rounded-lg border border-transparent bg-transparent text-foreground hover:bg-surface transition-colors"
+                    >
+                      <Download className="size-4" />
+                    </a>
+                  </li>
+                ))
+              : property.documents.map((doc) => (
+                  // existing mock rendering unchanged
+                  <li key={doc.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <FileText className="size-4 shrink-0 text-accent" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{doc.name}</p>
+                        <p className="text-xs text-muted">{doc.type} · {formatDate(doc.uploadedAt)}</p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon-sm" href={doc.url} aria-label={`Open ${doc.name}`}>
+                      <ExternalLink className="size-4" />
+                    </Button>
+                  </li>
+                ))
+            }
+          </ul>
+        </DetailPanel>
+      )}
+
+      {property.isFractional && property.sharePrice && soldPercent !== null && (
+        <DetailPanel title={propertyDetailCopy.fractionalTitle} icon={Shield}>
+          <dl className="grid gap-3 text-sm sm:grid-cols-3">
+            <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+              <dt className="text-muted">Share price</dt>
+              <dd className="mt-0.5 font-medium text-foreground">
+                {formatCurrency(property.sharePrice)}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+              <dt className="text-muted">Available</dt>
+              <dd className="mt-0.5 font-medium text-foreground">
+                {property.availableShares?.toLocaleString() ?? '0'}
+              </dd>
+            </div>
+            <div className="rounded-lg border border-border bg-surface px-3 py-2.5">
+              <dt className="text-muted">Total shares</dt>
+              <dd className="mt-0.5 font-medium text-foreground">
+                {property.fractionalShares?.toLocaleString() ?? '0'}
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-border">
+            <div className="h-full rounded-full bg-accent" style={{ width: `${soldPercent}%` }} />
+          </div>
+          <p className="mt-2 text-xs text-muted">{soldPercent}% allocated</p>
+        </DetailPanel>
+      )}
+    </div>
+  );
+}

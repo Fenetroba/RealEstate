@@ -1,0 +1,46 @@
+# Node modules
+/node_modules
+
+# Compilation output
+/dist
+
+# pnpm deploy output
+/bundle
+
+# Hardhat Build Artifacts
+/artifacts
+
+# Hardhat compilation (v2) support directory
+/cache
+
+# Typechain output
+/types
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Backend
+backend/node_modules
+backend/.env
+backend/.env.*
+
+# Frontend
+frontend/node_modules
+frontend/.env.local
+frontend/.env.*.local
+frontend/.next
+frontend/.turbo
+
+# Frontend old (backup)
+frontend-old/
+
+# Hardhat coverage reports
+/coverage
+
+# Gas snapshot files
+/.gas-snapshot
+
+# Snapshot cheatcodes output
+/snapshots
