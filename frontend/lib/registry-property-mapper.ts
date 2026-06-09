@@ -107,7 +107,14 @@ export function registryToProperty(
       ? 'BOTH'
       : registry.isForRent
         ? 'RENT'
-        : 'SALE';
+        : registry.isForSale
+          ? 'SALE'
+          : 'SALE'; // default: treat approved registry properties as for sale
+
+  // Use rent price if available and for-rent, otherwise sale price
+  const displayPrice = registry.isForRent && registry.rentPriceEth && !registry.isForSale
+    ? Number(registry.rentPriceEth) || 0
+    : priceNum;
 
   return {
     id: registry.id,
@@ -116,9 +123,9 @@ export function registryToProperty(
       options?.description ??
       registryDescriptions[registry.id] ??
       `${registry.name} on the EDENET property registry (NFT #${registry.id}). ${registry.location}.`,
-    price: priceNum,
+    price: displayPrice,
     priceCurrency: 'ETH',
-    pricePerSqft: area > 0 ? priceNum / area : undefined,
+    pricePerSqft: area > 0 ? displayPrice / area : undefined,
     propertyType: mapPropertyType(registry.propertyType),
     listingType,
     investmentType: registry.isForRent && !registry.isForSale ? ['RENT'] : ['BUY'],
@@ -126,6 +133,7 @@ export function registryToProperty(
     status: 'ACTIVE',
     registryForSale: registry.isForSale,
     registryForRent: registry.isForRent,
+    rentPrice: registry.rentPriceEth ? Number(registry.rentPriceEth) || 0 : undefined,
     location: {
       address,
       city,
@@ -160,16 +168,16 @@ export function registryToProperty(
     },
     aiScores: {
       ...defaultAiScores,
-      riskScore: 15 + Number(registry.id) * 3,
-      investmentPotential: 70 + Number(registry.id) * 2,
+      riskScore: Math.min(15 + (parseInt(registry.id) || 0) * 3, 95),
+      investmentPotential: Math.min(70 + (parseInt(registry.id) || 0) * 2, 99),
     },
     OWNERId: registry.owner,
     isFeatured: registry.id === '1',
     isFractional: false,
     documents: registryExtras.documents,
     timeline: registryExtras.timeline,
-    views: 1200 + Number(registry.id) * 340,
-    saves: 40 + Number(registry.id) * 8,
+    views: Math.max(0, 1200 + (parseInt(registry.id) || 0) * 340),
+    saves: Math.max(0, 40 + (parseInt(registry.id) || 0) * 8),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -210,6 +218,7 @@ export function mergeDbDataIntoRegistry(
   registry: RegistryProperty,
   dbRow: Record<string, unknown>,
 ): RegistryProperty {
+  const rentPriceRaw = dbRow.rentPrice ?? dbRow.rent_price;
   return {
     ...registry,
     name: String(dbRow.name ?? registry.name),
@@ -219,6 +228,9 @@ export function mergeDbDataIntoRegistry(
     bathrooms: Number(dbRow.bathrooms ?? registry.bathrooms),
     sqft: Number(dbRow.squareFeet ?? dbRow.sqft ?? registry.sqft),
     priceEth: String(dbRow.price ?? registry.priceEth),
+    rentPriceEth: rentPriceRaw ? String(rentPriceRaw) : registry.rentPriceEth,
+    isForSale: dbRow.isForSale === true || dbRow.isForSale === 'true' ? true : registry.isForSale,
+    isForRent: dbRow.isForRent === true || dbRow.isForRent === 'true' ? true : registry.isForRent,
     // Recompute priceWei from the DB price (stored as whole ETH)
     priceWei: (() => {
       const p = Number(dbRow.price ?? 0);

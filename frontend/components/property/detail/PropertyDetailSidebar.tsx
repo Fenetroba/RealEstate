@@ -60,7 +60,24 @@ export default function PropertyDetailSidebar({ property }: PropertyDetailSideba
         <div className="space-y-4">
           <div>
             <p className="text-sm text-muted">{propertyDetailCopy.sidebarPriceLabel}</p>
-            <p className={cn(typeStatValue, 'mt-1 text-accent')}>{formatPropertyPrice(property)}</p>
+            {/* Sale price */}
+            {(property.listingType === 'SALE' || property.listingType === 'BOTH') && (
+              <p className={cn(typeStatValue, 'mt-1 text-accent')}>
+                {formatPropertyPrice(property)}
+                <span className="ml-1 font-body text-xs font-medium text-muted">sale</span>
+              </p>
+            )}
+            {/* Rent price */}
+            {(property.listingType === 'RENT' || property.listingType === 'BOTH') && property.rentPrice != null && (
+              <p className={cn(typeStatValue, 'mt-1 text-accent')}>
+                {property.rentPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })} ETH
+                <span className="ml-1 font-body text-xs font-medium text-muted">/mo rent</span>
+              </p>
+            )}
+            {/* Rent-only fallback */}
+            {property.listingType === 'RENT' && property.rentPrice == null && (
+              <p className={cn(typeStatValue, 'mt-1 text-accent')}>{formatPropertyPrice(property)}<span className="ml-1 font-body text-xs font-medium text-muted">/mo</span></p>
+            )}
             {property.pricePerSqft != null && (
               <p className="mt-1 text-sm text-muted">
                 {property.priceCurrency === 'ETH'

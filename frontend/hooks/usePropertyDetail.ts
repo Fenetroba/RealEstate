@@ -4,13 +4,10 @@ import { useEffect, useState } from 'react';
 
 import { mapRegistryCatalogToProperties } from '@/lib/registry-property-mapper';
 import { getPropertyFromCatalog, setPropertyCatalog } from '@/lib/property-catalog-cache';
-import { loadMockRegistry } from '@/lib/mockRegistryData';
 import {
   getReadOnlyRegistryContract,
   loadRegistryProperties,
 } from '@/lib/web3/registry-contract';
-import { isRegistryMockMode } from '@/lib/web3/registry-mock';
-import { mockProperties } from '@/lib/mockData';
 import type { Property } from '@/types';
 
 // ADD HERE — before resolvePropertyById
@@ -38,14 +35,6 @@ async function resolvePropertyById(id: string): Promise<{
   // cached path — no documents available from cache
   const cached = getPropertyFromCatalog(id);
   if (cached) return { property: cached, documents: [], ownershipHistory: [] };
-
-  if (isRegistryMockMode()) {
-    const { properties, propertyDbMap } = await loadMockRegistry(0);
-    const catalog = mapRegistryCatalogToProperties(properties, propertyDbMap);
-    setPropertyCatalog(catalog);
-    const found = catalog.find((p) => p.id === id) ?? null;
-    return { property: found, documents: [], ownershipHistory: [] };
-  }
 
   const contract = getReadOnlyRegistryContract();
   if (contract) {
@@ -179,8 +168,75 @@ async function resolvePropertyById(id: string): Promise<{
     }
   }
 
-  // fallback
-  return { property: mockProperties.find((p) => p.id === id) ?? mockProperties[0] ?? null, documents: [], ownershipHistory: [] };
+  // Always try to load from DB catalog even without a contract
+  try {
+    const { fetchPropertyCatalog } = await import('@/lib/api/properties');
+    const cat = await fetchPropertyCatalog();
+    const dbRows = cat.rows as Record<string, unknown>[];
+    const dbMap = cat.map;
+    const { mergeDbDataIntoRegistry } = await import('@/lib/registry-property-mapper');
+    const dbOnlyMINTED: Property[] = [];
+
+    for (const row of dbRows) {
+      if (row.status !== 'MINTED') continue;
+      const tid = String(row.tokenId ?? row.token_id ?? '');
+      if (tid === id) {
+        // Directly build a minimal property from DB
+        const { mapPropertyType } = await import('@/lib/registry-property-mapper');
+        dbOnlyMINTED.push({
+          id: tid,
+          title: String(row.name ?? ''),
+          description: String(row.description ?? ''),
+          location: { address: String(row.location ?? ''), city: '', state: '', country: 'Ethiopia', zipCode: '', lat: 0, lng: 0 },
+          price: Number(row.price ?? 0),
+          priceCurrency: 'ETH',
+          propertyType: mapPropertyType(String(row.propertyType ?? '')),
+          listingType: 'SALE',
+          investmentType: ['BUY'],
+          status: 'ACTIVE',
+          bedrooms: Number(row.bedrooms ?? 0),
+          bathrooms: Number(row.bathrooms ?? 0),
+          area: Number(row.squareFeet ?? 0),
+          media: { images: [] },
+          amenities: { parking: false, pool: false, gym: false, security: false, elevator: false, garden: false, balcony: false, airConditioning: false, heating: false, internet: false, furnished: false, petFriendly: false },
+          blockchain: { tokenId: tid, ownerWallet: String(row.ownerWallet ?? ''), isVerified: true, transferHistory: [] },
+          aiScores: { riskScore: 20, marketRisk: 20, crimeRisk: 15, floodRisk: 10, neighborhoodRisk: 20, economicRisk: 20, scamProbability: 3, carbonScore: 75, energyEfficiency: 75, investmentPotential: 75 },
+          OWNERId: String(row.ownerWallet ?? ''),
+          isFeatured: false,
+          isFractional: false,
+          documents: [],
+          timeline: [],
+          views: 0,
+          saves: 0,
+          createdAt: String(row.createdAt ?? new Date().toISOString()),
+          updatedAt: String(row.updatedAt ?? new Date().toISOString()),
+        });
+      }
+    }
+
+    if (dbOnlyMINTED.length > 0) {
+      const found = dbOnlyMINTED[0];
+      // Fetch images
+      const dbId = dbMap[id] ?? dbMap[String(Number(id))];
+      if (dbId) {
+        try {
+          const { fetchPropertyImages, fetchPropertyDocuments } = await import('@/lib/api/properties');
+          const { mediaDataUrl } = await import('@/lib/property-media');
+          const [imgs, docs] = await Promise.all([fetchPropertyImages(dbId), fetchPropertyDocuments(dbId)]);
+          if (imgs.length > 0) { found.media.images = imgs.map((img) => mediaDataUrl(img)); }
+          const realDocuments: RealDocument[] = docs.map((doc, i) => ({
+            id: String(i), name: doc.fileName ?? doc.name ?? `doc-${i}`,
+            mimeType: doc.mimeType, data: doc.data, uploadedAt: null,
+          }));
+          return { property: found, documents: realDocuments, ownershipHistory: [] };
+        } catch { /* skip */ }
+      }
+      return { property: found, documents: [], ownershipHistory: [] };
+    }
+  } catch { /* no backend */ }
+
+  // Not found — return null, don't fall back to mock data
+  return { property: null, documents: [], ownershipHistory: [] };
 }
 
 export function usePropertyDetail(id: string | undefined) {

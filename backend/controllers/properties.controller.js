@@ -85,11 +85,25 @@ async function prepareRequest(req, res) {
       wallet, name, location, propertyType,
       bedrooms, bathrooms, sqft, parking,
       floors, yearBuilt, price, description,
-      titleNumber,
+      titleNumber, isForSale, isForRent, rentPrice,
     } = req.body;
 
-    if (!wallet || !name || !location || !propertyType || !price) {
+    if (!wallet || !name || !location || !propertyType) {
       return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Price validation depends on listing type
+    const forSale = isForSale === 'true' || isForSale === true;
+    const forRent  = isForRent  === 'true' || isForRent  === true;
+
+    if (forSale && !price) {
+      return res.status(400).json({ error: "Sale price (ETH) is required when listing for sale" });
+    }
+    if (forRent && !rentPrice) {
+      return res.status(400).json({ error: "Monthly rent (ETH) is required when listing for rent" });
+    }
+    if (!forSale && !forRent && !price) {
+      // Registry-only — price can be omitted, default to "0"
     }
 
     // ── Duplicate title number check ────────────────────────────────────────
@@ -146,13 +160,16 @@ async function prepareRequest(req, res) {
       location,
       propertyType,
       titleNumber:  titleNumber ? titleNumber.trim().toUpperCase() : null,
+      isForSale:    isForSale === 'true' || isForSale === true,
+      isForRent:    isForRent === 'true' || isForRent === true,
+      rentPrice:    rentPrice ? rentPrice.toString() : null,
       bedrooms:  parseInt(bedrooms)  || 0,
       bathrooms: parseInt(bathrooms) || 0,
       squareFeet: parseInt(sqft)     || 0,
       parking:   parseInt(parking)   || 0,
       floors:    parseInt(floors)    || 0,
       yearBuilt: parseInt(yearBuilt) || 0,
-      price:     price.toString(),
+      price:     (price || "0").toString(),
       description: description || "",
       imagesRootHash,
       documentsRootHash,
@@ -220,6 +237,9 @@ async function confirmRequest(req, res) {
         ownerWallet:  wallet.toLowerCase(),
         status:       "PENDING",
         titleNumber:  metadataObj.titleNumber || null,
+        isForSale:    metadataObj.isForSale   || false,
+        isForRent:    metadataObj.isForRent   || false,
+        rentPrice:    metadataObj.rentPrice   || null,
         name:         metadataObj.name,
         location:     metadataObj.location,
         propertyType: metadataObj.propertyType,
@@ -229,8 +249,7 @@ async function confirmRequest(req, res) {
         parking:      metadataObj.parking    || 0,
         floors:       metadataObj.floors     || 0,
         yearBuilt:    metadataObj.yearBuilt  || 0,
-        price:        metadataObj.price ? metadataObj.price.toString() : "0",
-        description:  metadataObj.description || null,
+        price:        metadataObj.price ? metadataObj.price.toString() : "0",        description:  metadataObj.description || null,
         metadataHash, imagesRootHash, documentsRootHash,
       },
     });
@@ -405,7 +424,9 @@ async function listProperties(req, res) {
         id: true, tokenId: true, ownerWallet: true,
         name: true, location: true, propertyType: true,
         bedrooms: true, bathrooms: true, squareFeet: true,
-        price: true, metadataHash: true, createdAt: true,
+        price: true, rentPrice: true,
+        isForSale: true, isForRent: true,
+        metadataHash: true, createdAt: true,
         status: true,
       },
       orderBy: { createdAt: "desc" },

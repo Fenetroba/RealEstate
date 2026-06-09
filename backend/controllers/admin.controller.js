@@ -54,7 +54,7 @@ async function listDbRequests(req, res) {
                 id: true, fileType: true, fileName: true,
                 mimeType: true, sizeBytes: true, sha256Hash: true,
                 versionNo: true, docType: true, createdAt: true,
-                uploadedBy: true,
+                uploadedBy: true, isDuplicate: true,
               },
               orderBy: { createdAt: "asc" },
             },

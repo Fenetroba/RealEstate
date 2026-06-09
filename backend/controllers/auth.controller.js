@@ -299,5 +299,34 @@ async function adminListUsers(req, res) {
   }
 }
 
-module.exports = { register, login, logout, refresh, getMe, updateProfile, connectWallet, adminListUsers };
+/**
+ * POST /api/auth/verify-password
+ * Verifies the current user's password without logging in again.
+ * Used for sensitive admin actions (e.g. approve property).
+ */
+async function verifyPassword(req, res) {
+  try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ success: false, message: "Password is required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({ success: false, message: "Incorrect password" });
+    }
+
+    return res.json({ success: true, data: { verified: true } });
+  } catch (err) {
+    console.error("[verifyPassword]", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+module.exports = { register, login, logout, refresh, getMe, updateProfile, connectWallet, adminListUsers, verifyPassword };
 

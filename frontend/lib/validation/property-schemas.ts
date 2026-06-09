@@ -17,8 +17,13 @@ const yearBuiltField = requiredNonNegativeNumeric('Year built').refine((raw) => 
   return year >= YEAR_BUILT_MIN && year <= YEAR_BUILT_MAX;
 }, `Valid year built (${YEAR_BUILT_MIN}–${YEAR_BUILT_MAX})`);
 
+const optionalNonNegativeNumeric = z
+  .string()
+  .optional()
+  .transform((v) => v ?? '')
+  .pipe(z.string());
+
 const propertyNumericFields = {
-  price: requiredNonNegativeNumeric('Price (ETH)'),
   bedrooms: requiredNonNegativeNumeric('Bedrooms'),
   bathrooms: requiredNonNegativeNumeric('Bathrooms'),
   sqft: requiredNonNegativeNumeric('Sqft'),
@@ -27,14 +32,27 @@ const propertyNumericFields = {
   yearBuilt: yearBuiltField,
 };
 
-export const propertyRegistrationSchema = z.object({
-  name: requiredTrimmed('Property name'),
-  location: requiredTrimmed('Location'),
-  propertyType: propertyTypeSchema,
-  isForSale: z.boolean(),
-  isForRent: z.boolean(),
-  ...propertyNumericFields,
-});
+export const propertyRegistrationSchema = z
+  .object({
+    name:        requiredTrimmed('Property name'),
+    location:    requiredTrimmed('Location'),
+    propertyType: propertyTypeSchema,
+    isForSale:   z.boolean(),
+    isForRent:   z.boolean(),
+    price:       z.string().default(''),
+    rentPrice:   z.string().default(''),
+    ...propertyNumericFields,
+  })
+  .superRefine((data, ctx) => {
+    // Sale price required when listing for sale
+    if (data.isForSale && (!data.price.trim() || Number(data.price) < 0)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price'], message: 'Sale price (ETH) is required' });
+    }
+    // Rent price required when listing for rent
+    if (data.isForRent && (!data.rentPrice.trim() || Number(data.rentPrice) < 0)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['rentPrice'], message: 'Monthly rent (ETH) is required' });
+    }
+  });
 
 export const propertyUpdateSchema = z.object({
   name: requiredTrimmed('Property name'),
@@ -52,7 +70,12 @@ export function validatePropertyRegistrationForm(
   form: PropertyRegistrationFormState,
   imageCount: number,
 ): string | null {
-  const body = propertyRegistrationSchema.safeParse(form);
+  const body = propertyRegistrationSchema.safeParse({
+    ...form,
+    // Provide empty strings for price fields not relevant to the listing type
+    price:     form.isForSale ? form.price : (form.price || '0'),
+    rentPrice: form.isForRent ? form.rentPrice : (form.rentPrice || '0'),
+  });
   if (!body.success) return firstZodError(body.error);
 
   const images = propertyRegistrationImagesSchema.safeParse(imageCount);

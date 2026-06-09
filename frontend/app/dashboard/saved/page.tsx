@@ -16,8 +16,6 @@ import { useDashboardSearch } from '@/hooks/useDashboardSearch';
 import { useProperties } from '@/hooks/useProperties';
 import { dashboardCardGridClass } from '@/lib/constants/dashboard-layout';
 import { filterCatalogProperties } from '@/lib/property-catalog-filters';
-import { getPropertyCatalog } from '@/lib/property-catalog-cache';
-import { mockProperties } from '@/lib/mockData';
 import { mapRegistryCatalogToProperties } from '@/lib/registry-property-mapper';
 import { useAppSelector } from '@/store/hooks';
 import type { ListingType, PropertyFilters } from '@/types';
@@ -26,10 +24,10 @@ import { cn } from '@/lib/utils';
 type SavedListingTab = 'ALL' | ListingType;
 
 const sortOptions = [
-  { value: 'newest', label: 'Recently saved' },
-  { value: 'price_asc', label: 'Price: low to high' },
+  { value: 'newest',     label: 'Recently saved' },
+  { value: 'price_asc',  label: 'Price: low to high' },
   { value: 'price_desc', label: 'Price: high to low' },
-  { value: 'area', label: 'Largest area' },
+  { value: 'area',       label: 'Largest area' },
 ];
 
 function listingTabToFilter(tab: SavedListingTab): PropertyFilters['listingType'] {
@@ -44,22 +42,20 @@ export default function SavedPropertiesPage() {
   const [listingTab, setListingTab] = useState<SavedListingTab>('ALL');
   const [sortBy, setSortBy] = useState<PropertyFilters['sortBy']>('newest');
 
+  // Build catalog ONLY from real registry properties — no mock data
   const catalog = useMemo(() => {
-    const fromRegistry = mapRegistryCatalogToProperties(registryList, propertyDbMap, imageOverrides);
-    const fromBrowse = getPropertyCatalog();
-    const byId = new Map(
-      [...mockProperties, ...fromRegistry, ...fromBrowse].map((p) => [p.id, p]),
-    );
+    const allReal = mapRegistryCatalogToProperties(registryList, propertyDbMap, imageOverrides);
+    const byId = new Map(allReal.map((p) => [p.id, p]));
     return savedIds
       .map((id) => byId.get(id))
       .filter((p): p is NonNullable<typeof p> => Boolean(p));
-  }, [registryList, propertyDbMap, savedIds]);
+  }, [registryList, propertyDbMap, imageOverrides, savedIds]);
 
   const tabCounts = useMemo(() => {
     const countFor = (tab: SavedListingTab) =>
       filterCatalogProperties(catalog, { listingType: listingTabToFilter(tab) }).length;
     return {
-      ALL: catalog.length,
+      ALL:  catalog.length,
       SALE: countFor('SALE'),
       RENT: countFor('RENT'),
       BOTH: countFor('BOTH'),
@@ -68,9 +64,9 @@ export default function SavedPropertiesPage() {
 
   const filters = useMemo<PropertyFilters>(
     () => ({
-      query: search.appliedQuery,
+      query:       search.appliedQuery,
       listingType: listingTabToFilter(listingTab),
-      sortBy: sortBy || 'newest',
+      sortBy:      sortBy || 'newest',
     }),
     [search.appliedQuery, listingTab, sortBy],
   );
@@ -90,10 +86,10 @@ export default function SavedPropertiesPage() {
   };
 
   const listingTabs = [
-    { id: 'ALL' as const, label: 'All', count: tabCounts.ALL },
-    { id: 'SALE' as const, label: 'For sale', count: tabCounts.SALE },
-    { id: 'RENT' as const, label: 'For rent', count: tabCounts.RENT },
-    { id: 'BOTH' as const, label: 'Sale & rent', count: tabCounts.BOTH },
+    { id: 'ALL'  as const, label: 'All',        count: tabCounts.ALL  },
+    { id: 'SALE' as const, label: 'For sale',   count: tabCounts.SALE },
+    { id: 'RENT' as const, label: 'For rent',   count: tabCounts.RENT },
+    { id: 'BOTH' as const, label: 'Sale & rent',count: tabCounts.BOTH },
   ].filter((tab) => tab.id === 'ALL' || tab.count > 0 || listingTab === tab.id);
 
   const description =
@@ -107,12 +103,12 @@ export default function SavedPropertiesPage() {
     <DashboardShell>
       <DashboardHeader title="Saved listings" description={description} />
 
-      {catalog.length > 0 ? (
+      {catalog.length > 0 && (
         <>
-          <DashboardFiltersBar className="!mt-6 !mb-8">
+          <DashboardFiltersBar className="mt-6 mb-8">
             <DashboardSearchField
               name="saved-listings-search"
-              placeholder="Search by name, city, address, type, NFT id…"
+              placeholder="Search by name, city, address, type…"
               aria-label="Search saved properties"
               value={search.queryInput}
               onChange={search.setQueryInput}
@@ -130,36 +126,30 @@ export default function SavedPropertiesPage() {
 
           <DashboardFilterTabs
             className="mb-6"
-            options={listingTabs.map((t) => ({
-              id: t.id,
-              label: t.label,
-              count: t.count,
-            }))}
+            options={listingTabs.map((t) => ({ id: t.id, label: t.label, count: t.count }))}
             value={listingTab}
             onChange={(id) => setListingTab(id as SavedListingTab)}
           />
 
-          {hasActiveFilters && filtered.length > 0 ? (
+          {hasActiveFilters && filtered.length > 0 && (
             <p className="-mt-2 mb-4 text-sm text-muted">
-              Tip: press Search or Enter — multiple words work (e.g.{' '}
-              <span className="font-medium">villa addis</span>).
               <button
                 type="button"
                 onClick={clearFilters}
-                className="ml-2 font-medium text-accent hover:underline"
+                className="font-medium text-accent hover:underline"
               >
                 Clear filters
               </button>
             </p>
-          ) : null}
+          )}
         </>
-      ) : null}
+      )}
 
       {catalog.length === 0 ? (
         <DashboardEmptyState
           icon={Heart}
           title="No saved properties"
-          description="Tap the heart on a listing to save it here."
+          description="Tap the heart icon on any listing to save it here."
           action={
             <Button href="/properties" variant="primary">
               View marketplace

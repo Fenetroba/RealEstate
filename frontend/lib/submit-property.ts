@@ -10,13 +10,17 @@ export type PropertyRegistrationType = (typeof PROPERTY_REGISTRATION_TYPES)[numb
 export const YEAR_BUILT_MIN = 1800;
 export const YEAR_BUILT_MAX = 2100;
 
+export type ListingTypeOption = 'NONE' | 'SALE' | 'RENT' | 'BOTH';
+
 export interface PropertyRegistrationFormState {
   name: string;
   location: string;
   propertyType: PropertyRegistrationType;
-  price: string;
-  isForSale: boolean;
-  isForRent: boolean;
+  listingType: ListingTypeOption;  // single dropdown value
+  price: string;       // sale price in ETH (shown when listingType is SALE or BOTH)
+  rentPrice: string;   // monthly rent in ETH (shown when listingType is RENT or BOTH)
+  isForSale: boolean;  // derived from listingType
+  isForRent: boolean;  // derived from listingType
   bedrooms: string;
   bathrooms: string;
   sqft: string;
@@ -30,7 +34,9 @@ export const emptyPropertyRegistrationForm = (): PropertyRegistrationFormState =
   name: '',
   location: '',
   propertyType: 'Villa',
+  listingType: 'NONE',
   price: '',
+  rentPrice: '',
   isForSale: false,
   isForRent: false,
   bedrooms: '',
@@ -41,6 +47,14 @@ export const emptyPropertyRegistrationForm = (): PropertyRegistrationFormState =
   yearBuilt: '',
   titleNumber: '',
 });
+
+/** Derive isForSale / isForRent from a listingType selection */
+export function deriveListingFlags(listingType: ListingTypeOption) {
+  return {
+    isForSale: listingType === 'SALE' || listingType === 'BOTH',
+    isForRent: listingType === 'RENT' || listingType === 'BOTH',
+  };
+}
 
 export interface PropertyRequestHashes {
   metadataHash: string;

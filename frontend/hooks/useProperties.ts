@@ -3,12 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { fetchPropertyCatalog } from '@/lib/api/properties';
-import { loadMockRegistry } from '@/lib/mockRegistryData';
 import {
   getReadOnlyRegistryContract,
   loadRegistryProperties,
 } from '@/lib/web3/registry-contract';
-import { isRegistryMockMode } from '@/lib/web3/registry-mock';
 import { mergeDbDataIntoRegistry } from '@/lib/registry-property-mapper';
 import type { PropertyDbMap, PropertyDbRow, RegistryProperty } from '@/types/registry-property';
 import { useWeb3 } from '@/contexts/Web3Context';
@@ -18,25 +16,27 @@ function dbRowToRegistryProperty(row: PropertyDbRow): RegistryProperty | null {
   const r = row as Record<string, unknown>;
   const tokenId = String(r.tokenId ?? r.token_id ?? '');
   if (!tokenId) return null;
-  const priceNum = Number(row.price ?? 0);
+  const priceNum = Number(r.price ?? 0);
+  const rentPriceRaw = r.rentPrice ?? r.rent_price;
   return {
     id:                tokenId,
     owner:             String(r.ownerWallet ?? r.owner_wallet ?? ''),
-    name:              row.name ?? '',
-    location:          row.location ?? '',
-    propertyType:      row.propertyType ?? '',
-    priceEth:          String(row.price ?? '0'),
+    name:              String(r.name ?? ''),
+    location:          String(r.location ?? ''),
+    propertyType:      String(r.propertyType ?? ''),
+    priceEth:          String(r.price ?? '0'),
     priceWei:          priceNum > 1e15
       ? BigInt(Math.round(priceNum))
       : BigInt(Math.floor(priceNum)) * BigInt('1000000000000000000'),
-    isForSale:         false,
-    isForRent:         false,
-    bedrooms:          Number(row.bedrooms ?? 0),
-    bathrooms:         Number(row.bathrooms ?? 0),
-    sqft:              Number(row.squareFeet ?? 0),
-    parking:           Object.hasOwn(row, 'parking') ? Boolean(row.parking) : false,
-    floors:            Number(row.floors ?? 0),
-    yearBuilt:         Number(row.yearBuilt ?? 0),
+    rentPriceEth:      rentPriceRaw ? String(rentPriceRaw) : undefined,
+    isForSale:         r.isForSale === true || r.isForSale === 'true',
+    isForRent:         r.isForRent === true || r.isForRent === 'true',
+    bedrooms:          Number(r.bedrooms ?? 0),
+    bathrooms:         Number(r.bathrooms ?? 0),
+    sqft:              Number(r.squareFeet ?? r.sqft ?? 0),
+    parking:           r.parking === true || Number(r.parking) > 0,
+    floors:            Number(r.floors ?? 0),
+    yearBuilt:         Number(r.yearBuilt ?? 0),
     metadataHash:      String(r.metadataHash ?? ''),
     imagesRootHash:    String(r.imagesRootHash ?? ''),
     documentsRootHash: String(r.documentsRootHash ?? ''),
@@ -44,7 +44,6 @@ function dbRowToRegistryProperty(row: PropertyDbRow): RegistryProperty | null {
 }
 
 export function useProperties() {
-  const mockMode = isRegistryMockMode();
   const { contract: signerContract } = useWeb3();
   const [properties, setProperties] = useState<RegistryProperty[]>([]);
   const [propertyDbMap, setPropertyDbMap] = useState<PropertyDbMap>({});
@@ -63,16 +62,6 @@ export function useProperties() {
       setApiWarning(null);
 
       try {
-        // ── Mock mode ──────────────────────────────────────────────────────────
-        if (mockMode) {
-          const { properties: list, propertyDbMap: map } = await loadMockRegistry(
-            isRefresh ? 200 : 450,
-          );
-          setProperties(list);
-          setPropertyDbMap(map);
-          return;
-        }
-
         // ── Step 1: ALWAYS load DB catalog (MINTED properties). ────────────────
         // These are shown even when the blockchain is unavailable.
         let dbRows: PropertyDbRow[] = [];
@@ -187,7 +176,7 @@ export function useProperties() {
         setRefreshing(false);
       }
     },
-    [mockMode, signerContract],
+    [signerContract],
   );
 
   useEffect(() => {
@@ -202,9 +191,9 @@ export function useProperties() {
     refreshing,
     chainError,
     apiWarning,
-    mockMode,
+    mockMode: false,
     refresh: () => load(true),
-    readContract: mockMode ? null : signerContract ?? getReadOnlyRegistryContract(),
-    writeContract: mockMode ? null : signerContract,
+    readContract: signerContract ?? getReadOnlyRegistryContract(),
+    writeContract: signerContract,
   };
 }

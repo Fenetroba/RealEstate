@@ -113,6 +113,8 @@ export interface Property {
   price: number;
   /** When ETH, price is token/listing amount in ether (not USD cents) */
   priceCurrency?: 'USD' | 'ETH';
+  /** Monthly rent price in ETH (only set when listingType is RENT or BOTH) */
+  rentPrice?: number;
   /** Registry NFT listed for sale on chain */
   registryForSale?: boolean;
   /** Registry NFT listed for rent on chain */

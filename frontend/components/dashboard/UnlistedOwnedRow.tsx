@@ -52,9 +52,7 @@ export function UnlistedOwnedRow({ property, className }: UnlistedOwnedRowProps)
               <span className="truncate">{property.location}</span>
             </p>
           </div>
-          <Badge variant="outline" size="sm">
-            Not listed
-          </Badge>
+      
         </div>
         <p className="mt-2 text-sm text-muted">
           {formatPropertyTypeLabel(property.propertyType)} · {formatRequestPrice(property.priceEth)}

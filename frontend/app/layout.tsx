@@ -57,14 +57,14 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
       className={`${montserrat.variable} h-full antialiased`}
     >
-      <head>
+      <head />
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        {/* Theme init — runs before paint to prevent flash of wrong theme */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var t=localStorage.getItem('edenet-theme');if(t==='dark')document.documentElement.classList.add('dark');})();`,
+            __html: `(function(){try{var t=localStorage.getItem('edenet-theme');if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`,
           }}
         />
-      </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground">
         <AppProviders>
           <ThemeProvider>
             {children}

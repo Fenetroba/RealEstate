@@ -147,9 +147,9 @@ async function parseSubmitError(res: Response): Promise<string> {
 export async function submitPropertyRequest(
   form: {
     name: string; location: string; propertyType: string; price: string;
-    isForSale: boolean; isForRent: boolean; bedrooms: string; bathrooms: string;
-    sqft: string; parking: string; floors: string; yearBuilt: string;
-    titleNumber?: string;
+    rentPrice?: string; isForSale: boolean; isForRent: boolean;
+    bedrooms: string; bathrooms: string; sqft: string; parking: string;
+    floors: string; yearBuilt: string; titleNumber?: string;
   },
   imageFiles: File[],
   documentFiles: File[],
@@ -163,6 +163,7 @@ export async function submitPropertyRequest(
   body.append('price', form.price.trim());
   body.append('isForSale', String(form.isForSale));
   body.append('isForRent', String(form.isForRent));
+  if (form.rentPrice?.trim()) body.append('rentPrice', form.rentPrice.trim());
   body.append('bedrooms', form.bedrooms.trim());
   body.append('bathrooms', form.bathrooms.trim());
   body.append('sqft', form.sqft.trim());
@@ -249,4 +250,4 @@ export async function fetchMyApprovedProperties(
   if (!res.ok) return [];
   const data = (await res.json()) as { success: boolean; data: PropertyDbRow[] };
   return Array.isArray(data.data) ? data.data : [];
-}
+}

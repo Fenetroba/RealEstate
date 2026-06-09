@@ -29,7 +29,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { addToast } from '@/store/slices/uiSlice';
 import { useSubmitPropertyRegistration } from '@/hooks/useSubmitPropertyRegistration';
 import { useWeb3 } from '@/contexts/Web3Context';
-import { PROPERTY_REGISTRATION_TYPES, emptyPropertyRegistrationForm } from '@/lib/submit-property';
+import { PROPERTY_REGISTRATION_TYPES, emptyPropertyRegistrationForm, deriveListingFlags, type ListingTypeOption } from '@/lib/submit-property';
 import { validatePropertyRegistrationForm } from '@/lib/validation/property-schemas';
 const MAX_IMAGE_MB = 10;
 const MAX_DOC_MB   = 10;
@@ -203,29 +203,52 @@ export function PropertyRegistrationForm() {
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="Price (ETH)"
-              required
-              type="number"
-              min={0}
-              step="any"
-              placeholder="0.5"
-              leftIcon={<Tag className="size-4" />}
-              value={form.price}
-              onChange={(e) => update({ price: e.target.value })}
-              disabled={loading}
-            />
             <Select
-              label="List for sale?"
+              label="Listing type"
               required
-              value={form.isForSale ? 'true' : 'false'}
-              onChange={(e) => update({ isForSale: e.target.value === 'true' })}
+              value={form.listingType}
+              onChange={(e) => {
+                const lt = e.target.value as ListingTypeOption;
+                const flags = deriveListingFlags(lt);
+                update({ listingType: lt, ...flags });
+              }}
               disabled={loading}
               options={[
-                { value: 'false', label: 'No — registry only' },
-                { value: 'true',  label: 'Yes — list for sale' },
+                { value: 'NONE', label: 'Registry only (not listed)' },
+                { value: 'SALE', label: 'For sale' },
+                { value: 'RENT', label: 'For rent' },
+                { value: 'BOTH', label: 'For sale & for rent' },
               ]}
             />
+            {(form.listingType === 'SALE' || form.listingType === 'BOTH') && (
+              <Input
+                label="Sale price (ETH)"
+                required
+                type="number"
+                min={0}
+                step="any"
+                placeholder="0.5"
+                leftIcon={<Tag className="size-4" />}
+                value={form.price}
+                onChange={(e) => update({ price: e.target.value })}
+                disabled={loading}
+              />
+            )}
+            {(form.listingType === 'RENT' || form.listingType === 'BOTH') && (
+              <Input
+                label="Monthly rent (ETH)"
+                required
+                type="number"
+                min={0}
+                step="any"
+                placeholder="0.05"
+                leftIcon={<Tag className="size-4" />}
+                value={form.rentPrice}
+                onChange={(e) => update({ rentPrice: e.target.value })}
+                disabled={loading}
+                hint="Monthly rent in ETH"
+              />
+            )}
           </div>
         </CardContent>
       </Card>

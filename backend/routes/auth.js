@@ -13,6 +13,7 @@ const {
   updateProfile,
   connectWallet,
   adminListUsers,
+  verifyPassword,
 } = require("../controllers/auth.controller");
 
 function requireAdmin(req, res, next) {
@@ -29,6 +30,7 @@ router.post("/refresh",         refresh);
 router.get ("/me",              requireAuth, getMe);
 router.put ("/profile",         requireAuth, updateProfile);
 router.post("/connect-wallet",  requireAuth, connectWallet);
+router.post("/verify-password", requireAuth, verifyPassword);
 router.get ("/admin/users",     requireAuth, requireAdmin, adminListUsers);
 
 module.exports = router;

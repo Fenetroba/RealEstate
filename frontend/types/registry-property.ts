@@ -6,6 +6,7 @@ export interface RegistryProperty {
   propertyType: string;
   priceEth: string;
   priceWei: bigint;
+  rentPriceEth?: string;    // monthly rent in ETH (undefined = not for rent)
   isForSale: boolean;
   isForRent: boolean;
   bedrooms: number;

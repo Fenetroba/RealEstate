@@ -38,11 +38,11 @@ export default function PropertyDetailHeader({ property }: PropertyDetailHeaderP
               <Badge variant="default" size="sm">
                 {propertyTypeLabels[property.propertyType]}
               </Badge>
-              {property.registryForSale === false && (
+              {/* {property.registryForSale === false && property.registryForRent !== true && property.registryForSale !== undefined && (
                 <Badge variant="default" size="sm">
                   Not on market
                 </Badge>
-              )}
+              )} */}
               {property.blockchain.isVerified && (
                 <Badge variant="verified">
                   <Shield className="size-3" />

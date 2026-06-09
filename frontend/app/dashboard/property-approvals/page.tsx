@@ -10,8 +10,12 @@ import {
   CheckCircle,
   ChevronDown,
   ChevronUp,
+  Eye,
+  EyeOff,
   FileText,
+  Hash,
   ImageIcon,
+  Lock,
   Loader2,
   MapPin,
   RefreshCw,
@@ -21,14 +25,13 @@ import {
   User,
   XCircle,
 } from 'lucide-react';
-
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { AdminSection } from '@/components/admin/AdminSection';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { ConfirmDialog } from '@/components/ui/Dialog';
+import { ConfirmDialog, FormDialog } from '@/components/ui/Dialog';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { addToast } from '@/store/slices/uiSlice';
 import { cn, formatDate, truncateAddress } from '@/lib/utils';
@@ -400,18 +403,29 @@ export default function PropertyApprovalsPage() {
   const [filter,   setFilter]   = useState<Filter>('PENDING');
   const [busy,     setBusy]     = useState<string | null>(null);
 
-  // Approve dialog
+  // ── Step 1: Password verification ─────────────────────────────────────────
+  // When admin clicks "Approve", first ask for password
+  const [passwordDialogId, setPasswordDialogId] = useState<string | null>(null);
+  const [adminPassword,    setAdminPassword]    = useState('');
+  const [showPassword,     setShowPassword]     = useState(false);
+  const [passwordError,    setPasswordError]    = useState('');
+  const [verifyingPwd,     setVerifyingPwd]     = useState(false);
+
+  // ── Step 2: Approve confirm ────────────────────────────────────────────────
+  // Shown only after password is verified
   const [approveId, setApproveId] = useState<string | null>(null);
-  // Decline dialog
+
+  // ── Decline dialog ─────────────────────────────────────────────────────────
   const [declineId,     setDeclineId]     = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
 
   const isAdmin = user?.role === 'ADMIN';
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (overrideFilter?: Filter) => {
     setLoading(true);
+    const activeFilter = overrideFilter ?? filter;
     try {
-      const params = filter !== 'ALL' ? `?status=${filter}` : '';
+      const params = activeFilter !== 'ALL' ? `?status=${activeFilter}` : '';
       const { data } = await apiClient.get(`/admin/db-requests${params}`);
       setRequests(data.data ?? []);
     } catch {
@@ -423,17 +437,38 @@ export default function PropertyApprovalsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const handleVerifyPassword = async () => {
+    if (!passwordDialogId || !adminPassword.trim()) {
+      setPasswordError('Please enter your password.');
+      return;
+    }
+    setVerifyingPwd(true);
+    setPasswordError('');
+    try {
+      await apiClient.post('/auth/verify-password', { password: adminPassword });
+      // Password correct — move to confirm step
+      setApproveId(passwordDialogId);
+      setPasswordDialogId(null);
+      setAdminPassword('');
+      setShowPassword(false);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Incorrect password';
+      setPasswordError(msg);
+    } finally {
+      setVerifyingPwd(false);
+    }
+  };
+
   const handleApprove = async () => {
     if (!approveId) return;
     setBusy(approveId);
     try {
-      await apiClient.post(
-        `/admin/approve/${approveId}`,
-        {},
-      );
+      await apiClient.post(`/admin/approve/${approveId}`, {});
       dispatch(addToast({ type: 'success', title: 'Property approved', message: 'The property is now published.' }));
       setApproveId(null);
-      await load();
+      setFilter('ALL');
+      await load('ALL');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
         ?? (err as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -443,7 +478,6 @@ export default function PropertyApprovalsPage() {
       setBusy(null);
     }
   };
-
   const handleDecline = async () => {
     if (!declineId) return;
     setBusy(declineId);
@@ -559,7 +593,7 @@ export default function PropertyApprovalsPage() {
                   key={req.id}
                   req={req}
                   busy={busy === req.id}
-                  onApprove={(id) => setApproveId(id)}
+                  onApprove={(id) => { setPasswordDialogId(id); setAdminPassword(''); setPasswordError(''); setShowPassword(false); }}
                   onDecline={(id) => { setDeclineId(id); setDeclineReason(''); }}
                 />
               ))}
@@ -568,7 +602,52 @@ export default function PropertyApprovalsPage() {
         </AdminSection>
       </div>
 
-      {/* Approve confirm */}
+      {/* ── Step 1: Password verification dialog ────────────────────────── */}
+      <FormDialog
+        isOpen={passwordDialogId !== null}
+        onClose={() => { setPasswordDialogId(null); setAdminPassword(''); setPasswordError(''); }}
+        onSubmit={() => void handleVerifyPassword()}
+        title="Verify your identity"
+        description="Enter your admin account password to proceed with approving this property."
+        icon={Lock}
+        submitLabel={verifyingPwd ? 'Verifying…' : 'Verify & continue'}
+        isLoading={verifyingPwd}
+        submitDisabled={!adminPassword.trim() || verifyingPwd}
+      >
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-foreground">
+            Admin password
+          </label>
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={adminPassword}
+              onChange={(e) => { setAdminPassword(e.target.value); setPasswordError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleVerifyPassword(); }}
+              placeholder="Enter your password"
+              autoFocus
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground"
+              tabIndex={-1}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+          {passwordError && (
+            <p className="flex items-center gap-1.5 text-sm text-destructive">
+              <AlertTriangle className="size-4 shrink-0" />
+              {passwordError}
+            </p>
+          )}
+        </div>
+      </FormDialog>
+
+      {/* ── Step 2: Approve confirm (after password verified) ─────────────── */}
       <ConfirmDialog
         isOpen={approveId !== null}
         onClose={() => setApproveId(null)}

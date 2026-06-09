@@ -40,11 +40,17 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   const ownerWallet = property.blockchain?.ownerWallet ?? '';
   const isForSale = Boolean(property.registryForSale);
   const isForRent = Boolean(property.registryForRent);
+
+  // Properties with DB-only tokenIds (pending_* or db_*) are not yet on-chain
+  // — blockchain transactions are not possible until the contract is deployed
+  const isOnChain = /^\d+$/.test(tokenId);
   // The contract stores price as whole ETH integers (not wei).
   // For buyProperty we send the ETH value as {value: parseEther(price)}.
   // For listProperty we send the whole number (e.g. 5, not 5e18).
   const priceEthNum = Number(property.price) || 0;
+  const rentPriceEthNum = Number(property.rentPrice) || priceEthNum;
   const priceWei = parseEther(String(priceEthNum));
+  const rentPriceWei = parseEther(String(rentPriceEthNum));
 
   const effectiveAccount =
     walletAddress ?? (mockMode ? REGISTRY_MOCK_PREVIEW_ACCOUNT : null);
@@ -57,21 +63,24 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   const canList =
     mockMode
       ? isOwner && !isForSale
-      : isConnected && isOwner && !isForSale && Boolean(writeContract);
+      : isOnChain && isConnected && isOwner && !isForSale && Boolean(writeContract);
   const canListForRent =
     mockMode
       ? isOwner && !isForRent
-      : isConnected && isOwner && !isForRent && Boolean(writeContract);
+      : isOnChain && isConnected && isOwner && !isForRent && Boolean(writeContract);
   const canBuy =
     mockMode
       ? isForSale && !isOwner
-      : isConnected && isForSale && !isOwner && Boolean(writeContract);
+      : isOnChain && isConnected && isForSale && !isOwner && Boolean(writeContract);
   const canRent =
     mockMode
       ? isForRent && !isOwner
-      : isConnected && isForRent && !isOwner && Boolean(writeContract);
+      : isOnChain && isConnected && isForRent && !isOwner && Boolean(writeContract);
 
   const displayPrice = Number(property.price).toLocaleString(undefined, {
+    maximumFractionDigits: 4,
+  });
+  const displayRentPrice = rentPriceEthNum.toLocaleString(undefined, {
     maximumFractionDigits: 4,
   });
 
@@ -254,7 +263,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
     if (!writeContract) return;
     setTxPending(true);
     try {
-      const tx = await writeContract.rentProperty(tokenId, { value: priceWei });
+      const tx = await writeContract.rentProperty(tokenId, { value: rentPriceWei });
       await tx.wait();
       dispatch(
         addToast({
@@ -305,7 +314,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
             leftIcon={<KeyRound className="size-4" />}
             onClick={() => requireWallet(() => setRentOpen(true))}
           >
-            Rent for {displayPrice} ETH
+            Rent for {displayRentPrice} ETH/mo
           </Button>
         ) : null}
         {canList ? (
@@ -325,16 +334,21 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
           <Button
             variant="outline"
             size="lg"
-            className="w-full cursor-not-allowed opacity-60"
+            className="w-full"
             leftIcon={<Tag className="size-4" />}
-            disabled
+            onClick={() => requireWallet(() => void handleListForRent())}
+            disabled={txPending}
+            isLoading={txPending}
           >
-            List for rent <span className="ml-2 text-xs">(Coming Soon)</span>
+            List for rent at {displayRentPrice} ETH/mo
           </Button>
         ) : null}
         {!hasRegistryAction && property.blockchain?.isVerified ? (
           <p className="text-center text-sm text-muted">
-            Connect your wallet to buy, rent, or list this property on-chain.
+            {!isOnChain
+              ? 'This property is registered in the database but not yet minted on-chain. Blockchain transactions (buy, rent, list) will be available once the smart contract is deployed and the property is minted.'
+              : 'Connect your wallet to buy, rent, or list this property on-chain.'
+            }
           </p>
         ) : null}
       </div>
@@ -385,7 +399,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
         summary={[
           { label: 'Property', value: property.title },
           { label: 'Registry NFT', value: `#${tokenId}` },
-          { label: 'Rent', value: `${displayPrice} ETH`, highlight: true },
+          { label: 'Monthly rent', value: `${displayRentPrice} ETH/mo`, highlight: true },
         ]}
         notice="Payment is sent on-chain for the listed rent period. Check the listing terms before confirming."
         confirmLabel="Pay & rent"

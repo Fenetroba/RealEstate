@@ -68,7 +68,10 @@ model Property {
   parking       Int       @default(0)
   floors        Int       @default(0)
   yearBuilt     Int       @default(0)
-  price         String                       // stored as string (wei value)
+  price         String                       // stored as string (wei value / ETH amount for sale)
+  rentPrice     String?                      // monthly rent in ETH (null if not for rent)
+  isForSale     Boolean   @default(false)    // listed for sale on marketplace
+  isForRent     Boolean   @default(false)    // listed for rent on marketplace
   description       String?
 
   // Hashes (latest approved version — for quick lookup)
