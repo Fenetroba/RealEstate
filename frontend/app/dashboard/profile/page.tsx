@@ -27,7 +27,9 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { useWeb3 } from '@/contexts/Web3Context';
 import { addToast } from '@/store/slices/uiSlice';
 import { updateProfileUser } from '@/store/slices/authSlice';
+import { authApi } from '@/lib/api/auth';
 import { cn, getInitials, truncateAddress } from '@/lib/utils';
+import { fetchCurrentUser } from '@/store/slices/authSlice';
 
 interface ProfileForm {
   first_name: string;
@@ -193,9 +195,31 @@ export default function DashboardProfilePage() {
             <div className="mt-6 rounded-xl border border-border bg-surface p-4 text-left">
               <p className="text-xs font-medium text-muted">Connected wallet</p>
               {isConnected && address ? (
-                <p className="mt-1 font-mono text-sm text-foreground break-all">
-                  {truncateAddress(address)}
-                </p>
+                <div className="mt-1">
+                  <p className="font-mono text-sm text-foreground break-all">
+                    {truncateAddress(address)}
+                  </p>
+                  {user?.walletAddress?.toLowerCase() !== address.toLowerCase() ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full"
+                      onClick={async () => {
+                        try {
+                          await authApi.connectWallet(address);
+                          dispatch(fetchCurrentUser());
+                          dispatch(addToast({ type: 'success', title: 'Wallet linked to account' }));
+                        } catch (err: any) {
+                          dispatch(addToast({ type: 'error', title: 'Failed to link wallet', message: err.response?.data?.message || err.message }));
+                        }
+                      }}
+                    >
+                      Link to Account
+                    </Button>
+                  ) : (
+                    <Badge variant="success" className="mt-2 text-[10px]">Linked</Badge>
+                  )}
+                </div>
               ) : (
                 <Button
                   variant="primary"

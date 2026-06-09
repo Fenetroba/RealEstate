@@ -11,7 +11,7 @@ const artifact = JSON.parse(
 );
 
 // Your MetaMask wallet = government wallet (receives commission)
-const governmentWallet = "0x838c47Aa5F37C5532940877E42D7da2c93C10a6F";
+const governmentWallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
 const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, signer);
 const contract = await factory.deploy(governmentWallet);

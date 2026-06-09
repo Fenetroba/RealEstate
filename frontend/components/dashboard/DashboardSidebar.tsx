@@ -386,19 +386,14 @@ export default function DashboardSidebar() {
           ) : (
             <div className="pr-2">
               <div className="flex items-start justify-between gap-2 pe-1">
-                <div className="flex min-w-0 flex-1 items-start gap-1.5 pe-2">
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 pe-2">
                   <SiteBrandLogo
                     href="/dashboard"
                     imageClassName="size-8 shrink-0 rounded-full object-cover ring-1 ring-[var(--dashboard-sidebar-border)]"
                     showText={false}
                   />
-                  <div className="flex min-w-0 flex-col gap-2.5">
-                    <Link
-                      href="/dashboard"
-                      className="truncate text-xs font-bold leading-tight text-[var(--dashboard-sidebar-fg)] dark:text-foreground"
-                    >
-                      EDENET<span className="text-accent"> Real Estate</span>
-                    </Link>
+                  <div className="flex min-w-0  gap-2.5">
+                  
                     <Badge variant="gold" size="sm" className="w-fit">
                       {sidebarLabel}
                     </Badge>

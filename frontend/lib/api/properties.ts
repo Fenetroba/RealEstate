@@ -111,6 +111,10 @@ export interface SubmitPropertyRequestResult {
   propertyId: string;
   tempId?: string;
   hashes: PropertyRequestHashesDto;
+  warnings?: {
+    duplicateDocuments: { hash: string; fileName: string; propertyName: string }[];
+    message: string;
+  } | null;
 }
 
 export async function confirmPropertyRequest(
@@ -145,6 +149,7 @@ export async function submitPropertyRequest(
     name: string; location: string; propertyType: string; price: string;
     isForSale: boolean; isForRent: boolean; bedrooms: string; bathrooms: string;
     sqft: string; parking: string; floors: string; yearBuilt: string;
+    titleNumber?: string;
   },
   imageFiles: File[],
   documentFiles: File[],
@@ -164,6 +169,7 @@ export async function submitPropertyRequest(
   body.append('parking', form.parking.trim());
   body.append('floors', form.floors.trim());
   body.append('yearBuilt', form.yearBuilt.trim());
+  if (form.titleNumber?.trim()) body.append('titleNumber', form.titleNumber.trim());
   for (const file of imageFiles) body.append('images', file);
   for (const file of documentFiles) body.append('documents', file);
 
@@ -223,3 +229,24 @@ export async function verifyPropertyIntegrity(tokenId: string): Promise<Property
   const { fetchPropertyVerifyReport } = await import('@/lib/api/property-verify');
   return fetchPropertyVerifyReport(tokenId);
 }
+
+/**
+ * Fetch all MINTED (approved) properties belonging to the authenticated user.
+ * Requires the JWT access token — calls GET /api/properties/mine.
+ * Optionally pass the connected wallet address to broaden the match.
+ */
+export async function fetchMyApprovedProperties(
+  walletAddress?: string,
+): Promise<PropertyDbRow[]> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+  if (!token) return [];
+
+  const qs = walletAddress ? `?wallet=${encodeURIComponent(walletAddress.toLowerCase())}` : '';
+  const res = await fetch(`${NFT_API_BASE_URL}/properties/mine${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { success: boolean; data: PropertyDbRow[] };
+  return Array.isArray(data.data) ? data.data : [];
+}

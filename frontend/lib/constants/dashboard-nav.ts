@@ -74,17 +74,7 @@ export const dashboardAdminNavGroups: DashboardNavGroup[] = [
       { href: '/dashboard/users',              label: 'Users & KYC review',  icon: UsersRound     },
     ],
   },
-  {
-    id: 'admin-my',
-    label: 'My activity',
-    icon: House,
-    links: [
-      { href: '/properties',                label: 'View marketplace',    icon: Compass    },
-      { href: '/dashboard/my-properties',   label: 'My properties',       icon: Building2  },
-      { href: '/dashboard/my-requests',     label: 'My requests',         icon: ClipboardList },
-      { href: '/dashboard/listings/create', label: 'Submit registration', icon: FilePlus   },
-    ],
-  },
+
 ];
 
 // Keep flat list for backward compat (sidebar still uses this for non-grouped rendering)

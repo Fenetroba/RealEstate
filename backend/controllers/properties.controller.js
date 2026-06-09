@@ -74,7 +74,10 @@ async function saveFilesToDb(files, propertyId, uploaderWallet, versionNo = 1) {
 
 /**
  * POST /api/properties/request/prepare
- * Hash files, cache temporarily, return hashes for on-chain call
+ * Hash files, cache temporarily, return hashes for on-chain call.
+ * Also checks:
+ *   - Duplicate title number (409 if already registered)
+ *   - Document fingerprint duplicates (flagged but not blocked)
  */
 async function prepareRequest(req, res) {
   try {
@@ -82,14 +85,55 @@ async function prepareRequest(req, res) {
       wallet, name, location, propertyType,
       bedrooms, bathrooms, sqft, parking,
       floors, yearBuilt, price, description,
+      titleNumber,
     } = req.body;
 
     if (!wallet || !name || !location || !propertyType || !price) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // ── Duplicate title number check ────────────────────────────────────────
+    if (titleNumber && titleNumber.trim()) {
+      const normalizedTitle = titleNumber.trim().toUpperCase();
+      const existing = await prisma.property.findFirst({
+        where: {
+          titleNumber: normalizedTitle,
+          status: { in: ["PENDING", "MINTED"] }, // ignore DECLINED
+        },
+        select: { id: true, name: true, status: true },
+      });
+
+      if (existing) {
+        return res.status(409).json({
+          error: `Duplicate title number: "${normalizedTitle}" is already registered (status: ${existing.status}). Each land title can only be registered once.`,
+          code: "DUPLICATE_TITLE_NUMBER",
+          existingPropertyName: existing.name,
+        });
+      }
+    }
+
     const images    = req.files?.images    || [];
     const documents = req.files?.documents || [];
+
+    // ── Document fingerprint duplicate detection ────────────────────────────
+    const allFileHashes = [...images, ...documents].map((f) => hashBuffer(f.buffer));
+    const duplicateHashes = [];
+
+    if (allFileHashes.length > 0) {
+      const existingDocs = await prisma.document.findMany({
+        where: { sha256Hash: { in: allFileHashes } },
+        select: { sha256Hash: true, fileName: true, property: { select: { name: true, titleNumber: true } } },
+      });
+
+      if (existingDocs.length > 0) {
+        duplicateHashes.push(...existingDocs.map((d) => ({
+          hash:         d.sha256Hash,
+          fileName:     d.fileName,
+          propertyName: d.property?.name ?? "unknown",
+        })));
+        console.warn("[prepareRequest] Duplicate document hashes detected:", duplicateHashes);
+      }
+    }
 
     const imageHashes = images.map((f) => hashBuffer(f.buffer));
     const docHashes   = documents.map((f) => hashBuffer(f.buffer));
@@ -101,6 +145,7 @@ async function prepareRequest(req, res) {
       name,
       location,
       propertyType,
+      titleNumber:  titleNumber ? titleNumber.trim().toUpperCase() : null,
       bedrooms:  parseInt(bedrooms)  || 0,
       bathrooms: parseInt(bathrooms) || 0,
       squareFeet: parseInt(sqft)     || 0,
@@ -121,12 +166,18 @@ async function prepareRequest(req, res) {
       wallet, metadataObj, metadataHash,
       imagesRootHash, documentsRootHash,
       imageFiles: images, docFiles: documents,
+      duplicateHashes,  // stored for confirmRequest to flag documents
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
 
     return res.status(200).json({
       tempId,
       hashes: { metadataHash, imagesRootHash, documentsRootHash },
+      // Warn the client if duplicate documents detected (don't block, just flag)
+      warnings: duplicateHashes.length > 0 ? {
+        duplicateDocuments: duplicateHashes,
+        message: `${duplicateHashes.length} document(s) appear to have been submitted before and will be flagged for review.`,
+      } : null,
     });
   } catch (err) {
     console.error("[prepareRequest]", err);
@@ -157,13 +208,18 @@ async function confirmRequest(req, res) {
       wallet, metadataObj, metadataHash,
       imagesRootHash, documentsRootHash,
       imageFiles, docFiles,
+      duplicateHashes = [],
     } = pending;
+
+    // Build a Set of duplicate hashes for fast lookup
+    const dupHashSet = new Set(duplicateHashes.map((d) => d.hash));
 
     const property = await prisma.property.create({
       data: {
         tokenId:      `pending_${Date.now()}`,
         ownerWallet:  wallet.toLowerCase(),
         status:       "PENDING",
+        titleNumber:  metadataObj.titleNumber || null,
         name:         metadataObj.name,
         location:     metadataObj.location,
         propertyType: metadataObj.propertyType,
@@ -185,16 +241,17 @@ async function confirmRequest(req, res) {
       const hash = hashBuffer(file.buffer);
       const doc = await prisma.document.create({
         data: {
-          propertyId: property.id,
-          fileData:   file.buffer,
-          sha256Hash: hash,
-          fileName:   file.originalname,
-          mimeType:   file.mimetype,
-          fileType:   "IMAGE",
-          docType:    "photo",
-          versionNo:  1,
-          sizeBytes:  file.size,
-          uploadedBy: wallet.toLowerCase(),
+          propertyId:  property.id,
+          fileData:    file.buffer,
+          sha256Hash:  hash,
+          fileName:    file.originalname,
+          mimeType:    file.mimetype,
+          fileType:    "IMAGE",
+          docType:     "photo",
+          versionNo:   1,
+          sizeBytes:   file.size,
+          uploadedBy:  wallet.toLowerCase(),
+          isDuplicate: dupHashSet.has(hash),
         },
       });
       savedDocs.push(doc);
@@ -204,16 +261,17 @@ async function confirmRequest(req, res) {
       const hash = hashBuffer(file.buffer);
       const doc = await prisma.document.create({
         data: {
-          propertyId: property.id,
-          fileData:   file.buffer,
-          sha256Hash: hash,
-          fileName:   file.originalname,
-          mimeType:   file.mimetype,
-          fileType:   "DOCUMENT",
-          docType:    "deed",
-          versionNo:  1,
-          sizeBytes:  file.size,
-          uploadedBy: wallet.toLowerCase(),
+          propertyId:  property.id,
+          fileData:    file.buffer,
+          sha256Hash:  hash,
+          fileName:    file.originalname,
+          mimeType:    file.mimetype,
+          fileType:    "DOCUMENT",
+          docType:     "deed",
+          versionNo:   1,
+          sizeBytes:   file.size,
+          uploadedBy:  wallet.toLowerCase(),
+          isDuplicate: dupHashSet.has(hash),
         },
       });
       savedDocs.push(doc);
@@ -348,6 +406,7 @@ async function listProperties(req, res) {
         name: true, location: true, propertyType: true,
         bedrooms: true, bathrooms: true, squareFeet: true,
         price: true, metadataHash: true, createdAt: true,
+        status: true,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -447,6 +506,9 @@ async function getMyRequests(req, res) {
     if (user?.walletAddress) {
       orConditions.push({ submittedBy: user.walletAddress.toLowerCase() });
     }
+    if (req.query.wallet) {
+      orConditions.push({ submittedBy: req.query.wallet.toLowerCase() });
+    }
 
     const requests = await prisma.request.findMany({
       where: { OR: orConditions },
@@ -468,6 +530,54 @@ async function getMyRequests(req, res) {
   }
 }
 
+/**
+ * GET /api/properties/mine
+ * Returns all MINTED (approved) properties that belong to the authenticated user's wallet.
+ * Also optionally accepts ?wallet= for unauthenticated wallet-only queries.
+ */
+async function getMyProperties(req, res) {
+  try {
+    const userId = req.userId;
+
+    // Look up the user's wallet address stored in the DB
+    const user = await prisma.user.findUnique({
+      where:  { id: userId },
+      select: { walletAddress: true },
+    });
+
+    // Build the wallet list — combine DB wallet + optional ?wallet query param
+    const wallets = [];
+    if (user?.walletAddress) wallets.push(user.walletAddress.toLowerCase());
+    if (req.query.wallet)    wallets.push(req.query.wallet.toLowerCase());
+
+    if (wallets.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const properties = await prisma.property.findMany({
+      where: {
+        status:      "MINTED",
+        ownerWallet: { in: wallets },
+      },
+      select: {
+        id: true, tokenId: true, ownerWallet: true,
+        name: true, location: true, propertyType: true,
+        bedrooms: true, bathrooms: true, squareFeet: true,
+        parking: true, floors: true, yearBuilt: true,
+        price: true, description: true, titleNumber: true,
+        metadataHash: true, imagesRootHash: true, documentsRootHash: true,
+        status: true, createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json({ success: true, data: properties });
+  } catch (err) {
+    console.error("[getMyProperties]", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   prepareRequest,
   confirmRequest,
@@ -477,4 +587,5 @@ module.exports = {
   getPropertyImages,
   getPropertyDocuments,
   getMyRequests,
+  getMyProperties,
 };

@@ -54,6 +54,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
+      data-scroll-behavior="smooth"
       className={`${montserrat.variable} h-full antialiased`}
     >
       <head>

@@ -23,6 +23,7 @@ export interface PropertyRegistrationFormState {
   parking: string;
   floors: string;
   yearBuilt: string;
+  titleNumber: string;
 }
 
 export const emptyPropertyRegistrationForm = (): PropertyRegistrationFormState => ({
@@ -38,6 +39,7 @@ export const emptyPropertyRegistrationForm = (): PropertyRegistrationFormState =
   parking: '',
   floors: '',
   yearBuilt: '',
+  titleNumber: '',
 });
 
 export interface PropertyRequestHashes {

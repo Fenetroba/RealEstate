@@ -52,74 +52,128 @@ async function resolvePropertyById(id: string): Promise<{
     try {
       const registryList = await loadRegistryProperties(contract);
 
-      // Fetch DB catalog for dbId mapping and latest metadata
-      let dbMap: Record<string, string> = {};
+      // Fetch DB catalog (MINTED properties + mappings)
       let dbRows: Record<string, unknown>[] = [];
+      let dbMap: Record<string, string> = {};
       try {
         const { fetchPropertyCatalog } = await import('@/lib/api/properties');
         const cat = await fetchPropertyCatalog();
-        dbMap = cat.map;
         dbRows = cat.rows as Record<string, unknown>[];
+        dbMap = cat.map;
       } catch { /* no backend */ }
 
-      // Merge DB metadata
-      const { mergeDbDataIntoRegistry } = await import('@/lib/registry-property-mapper');
-      const dbDataMap: Record<string, Record<string, unknown>> = {};
+      // 1. Build a list of DB-only MINTED properties (not yet on-chain)
+      const chainIds = new Set(registryList.map((p) => p.id));
+      const dbOnlyMINTED: Property[] = [];
+      
+      const { mapPropertyType, mergeDbDataIntoRegistry } = await import('@/lib/registry-property-mapper');
+      
       for (const row of dbRows) {
-        const tokenId = String((row as Record<string,unknown>).tokenId ?? '');
-        if (tokenId) {
-          dbDataMap[tokenId] = row;
-          dbDataMap[String(Number(tokenId))] = row;
+        if (row.status !== 'MINTED') continue;
+        const tid = String(row.tokenId ?? row.token_id ?? '');
+        if (tid && !chainIds.has(tid) && !chainIds.has(String(Number(tid)))) {
+          // Map DB row to full Property object
+          dbOnlyMINTED.push({
+            id: tid,
+            title: String(row.name ?? ''),
+            description: String(row.description ?? ''),
+            location: {
+              address: String(row.location ?? ''),
+              city: '', state: '', country: '', zipCode: ''
+            },
+            price: Number(row.price ?? 0),
+            priceCurrency: 'ETH',
+            propertyType: mapPropertyType(String(row.propertyType ?? '')),
+            listingType: 'SALE',
+            status: 'ACTIVE',
+            bedrooms: Number(row.bedrooms ?? 0),
+            bathrooms: Number(row.bathrooms ?? 0),
+            area: Number(row.squareFeet ?? 0),
+            images: [],
+            media: { images: [], documents: [] },
+            createdAt: String(row.createdAt ?? new Date().toISOString()),
+            views: 0,
+            blockchain: {
+              tokenId: tid,
+              ownerWallet: String(row.ownerWallet ?? ''),
+              isVerified: true
+            }
+          });
         }
       }
+
+      // 2. Build tokenId → DB row map for merging into chain properties
+      const dbDataMap: Record<string, Record<string, unknown>> = {};
+      for (const row of dbRows) {
+        const tid = String(row.tokenId ?? row.token_id ?? '');
+        if (tid) {
+          dbDataMap[tid] = row;
+          dbDataMap[String(Number(tid))] = row;
+        }
+      }
+
+      // 3. Merge DB data into Registry list
       const merged = registryList.map((p) => {
         const db = dbDataMap[p.id] ?? dbDataMap[String(Number(p.id))];
         return db ? mergeDbDataIntoRegistry(p, db) : p;
       });
 
-      // Fetch images + documents for this specific property
-      const dbId = dbMap[id] ?? dbMap[String(Number(id))];
-      let imageOverrides: Record<string, string[]> = {};
-      let realDocuments: RealDocument[] = [];
-      let ownershipHistory: RealOwnershipHistory[] = [];
+      // 4. Combine and update cache
+      const finalCatalog = [
+        ...mapRegistryCatalogToProperties(merged, dbMap),
+        ...dbOnlyMINTED
+      ];
       
-      if (dbId) {
-        try {
-          const { fetchPropertyImages, fetchPropertyDocuments } = await import('@/lib/api/properties');
-          const { mediaDataUrl } = await import('@/lib/property-media');
-          const [imgs, docs] = await Promise.all([
-            fetchPropertyImages(dbId),
-            fetchPropertyDocuments(dbId),
-          ]);
-          if (imgs.length > 0) {
-            imageOverrides[id] = imgs.map((img) => mediaDataUrl(img));
-          }
-          realDocuments = docs.map((doc, index) => ({
-            id:         String(index),
-            name:       doc.fileName ?? doc.name ?? `document-${index + 1}`,
-            mimeType:   doc.mimeType,
-            data:       doc.data,
-            uploadedAt: null,
-          }));
-        } catch { /* no docs */ }
+      setPropertyCatalog(finalCatalog);
+
+      // 5. Build final state for requested property
+      const found = finalCatalog.find((p) => p.id === id);
+      
+      if (found) {
+        let imageOverrides: Record<string, string[]> = {};
+        let realDocuments: RealDocument[] = [];
+        let ownershipHistory: RealOwnershipHistory[] = [];
+        
+        const dbId = dbMap[id] ?? dbMap[String(Number(id))];
+        if (dbId) {
+          try {
+            const { fetchPropertyImages, fetchPropertyDocuments } = await import('@/lib/api/properties');
+            const { mediaDataUrl } = await import('@/lib/property-media');
+            const [imgs, docs] = await Promise.all([
+              fetchPropertyImages(dbId),
+              fetchPropertyDocuments(dbId),
+            ]);
+            if (imgs.length > 0) {
+              imageOverrides[id] = imgs.map((img) => mediaDataUrl(img));
+              found.media.images = imageOverrides[id];
+              found.images = imageOverrides[id];
+            }
+            realDocuments = docs.map((doc, index) => ({
+              id:         String(index),
+              name:       doc.fileName ?? doc.name ?? `document-${index + 1}`,
+              mimeType:   doc.mimeType,
+              data:       doc.data,
+              uploadedAt: null,
+            }));
+          } catch { /* no docs */ }
+        }
+
+        // Fetch ownership history from blockchain (only if on-chain)
+        if (chainIds.has(id) || chainIds.has(String(Number(id)))) {
+          try {
+            const { fetchOwnershipHistory } = await import('@/lib/web3/registry-contract');
+            const history = await fetchOwnershipHistory(contract, id);
+            ownershipHistory = history.map((h) => ({
+              from: h.from,
+              to: h.to,
+              price: String(h.price ?? '0'),
+              timestamp: typeof h.timestamp === 'bigint' ? Number(h.timestamp) : (h.timestamp ?? 0),
+            }));
+          } catch { /* no history */ }
+        }
+
+        return { property: found, documents: realDocuments, ownershipHistory };
       }
-
-      // Fetch ownership history from blockchain
-      try {
-        const { fetchOwnershipHistory } = await import('@/lib/web3/registry-contract');
-        const history = await fetchOwnershipHistory(contract, id);
-        ownershipHistory = history.map((h) => ({
-          from: h.from,
-          to: h.to,
-          price: String(h.price ?? '0'),
-          timestamp: typeof h.timestamp === 'bigint' ? Number(h.timestamp) : (h.timestamp ?? 0),
-        }));
-      } catch { /* no history */ }
-
-      const catalog = mapRegistryCatalogToProperties(merged, dbMap, imageOverrides);
-      setPropertyCatalog(catalog);
-        const found = catalog.find((p) => p.id === id);
-        if (found) return { property: found, documents: realDocuments, ownershipHistory };
     } catch {
       /* fall through */
     }

@@ -14,8 +14,9 @@ contract RealEstate is ERC721, AccessControl {
     uint256 private _requestIdCounter;
     uint256 private _updateRequestIdCounter;
 
-    // ============ COMMISSION ============
+    // ============ COMMISSION & FEES ============
     uint256 public commissionPercent = 2;
+    uint256 public registrationFee = 0.07 ether;
     address public governmentWallet;
     bool public platformRestricted = true;
 
@@ -115,10 +116,17 @@ contract RealEstate is ERC721, AccessControl {
 
     // ── CHANGED: details now carries bytes32 hashes instead of string ipfsHash ──
     // The frontend calls the backend first to get the three hashes,
-    // then passes them here inside the details struct.
-    function submitRequest(PropertyDetails memory details) public {
+    // then passes them here inside the details struct, along with the registration fee.
+    function submitRequest(PropertyDetails memory details) public payable {
+        require(msg.value >= registrationFee, "Insufficient registration fee");
+
         uint256 requestId = _requestIdCounter;
         _requestIdCounter++;
+
+        // Transfer the registration fee directly to the government wallet
+        if (governmentWallet != address(0)) {
+            payable(governmentWallet).transfer(msg.value);
+        }
 
         details.price = details.price * 1 ether;
 
@@ -228,6 +236,10 @@ contract RealEstate is ERC721, AccessControl {
     function setCommission(uint256 percent) public onlyRole(DEFAULT_ADMIN_ROLE) {
         require(percent <= 10, "Commission too high");
         commissionPercent = percent;
+    }
+
+    function setRegistrationFee(uint256 feeInWei) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        registrationFee = feeInWei;
     }
 
     // ============ UPDATE FUNCTIONS ============

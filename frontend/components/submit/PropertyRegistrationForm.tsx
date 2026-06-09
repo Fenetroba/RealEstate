@@ -3,12 +3,14 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
+  AlertTriangle,
   Bath,
   Bed,
   Building2,
   Calendar,
   Car,
   FileText,
+  Hash,
   ImageIcon,
   Layers,
   Loader2,
@@ -23,12 +25,12 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useAppDispatch } from '@/store/hooks';
 import { addToast } from '@/store/slices/uiSlice';
-import { submitPropertyRequest, confirmPropertyRequest } from '@/lib/api/properties';
+import { useSubmitPropertyRegistration } from '@/hooks/useSubmitPropertyRegistration';
+import { useWeb3 } from '@/contexts/Web3Context';
 import { PROPERTY_REGISTRATION_TYPES, emptyPropertyRegistrationForm } from '@/lib/submit-property';
 import { validatePropertyRegistrationForm } from '@/lib/validation/property-schemas';
-
 const MAX_IMAGE_MB = 10;
 const MAX_DOC_MB   = 10;
 const ALLOWED_IMAGES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -71,21 +73,22 @@ function ImagePreview({ file, onRemove }: { file: File; onRemove: () => void }) 
 export function PropertyRegistrationForm() {
   const router   = useRouter();
   const dispatch = useAppDispatch();
-  const { user } = useAppSelector((s) => s.auth);
-  const walletAddress = useAppSelector((s) => s.wallet.address);
 
+  const { contract } = useWeb3();
+  const isWalletConnected = Boolean(contract);
+  const { submit, loading, fieldError, setFieldError, dupWarning } = useSubmitPropertyRegistration(contract);
+  
   const [form, setForm] = useState(emptyPropertyRegistrationForm());
   const [images,    setImages]    = useState<File[]>([]);
   const [documents, setDocuments] = useState<File[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState<string | null>(null);
+
 
   const imageRef = useRef<HTMLInputElement>(null);
   const docRef   = useRef<HTMLInputElement>(null);
 
   const update = (patch: Partial<typeof form>) => {
     setForm((p) => ({ ...p, ...patch }));
-    setError(null);
+    setFieldError(null);
   };
 
   // ── File handlers ───────────────────────────────────────────────────────────
@@ -127,46 +130,23 @@ export function PropertyRegistrationForm() {
   // ── Submit ──────────────────────────────────────────────────────────────────
 
   const handleSubmit = useCallback(async () => {
-    setError(null);
-
-    // Use wallet address or user email as identifier
-    const submitterWallet = walletAddress ?? `user:${user?.id ?? 'anonymous'}`;
+    setFieldError(null);
 
     const validationErr = validatePropertyRegistrationForm(form, images.length);
     if (validationErr) {
-      setError(validationErr);
+      setFieldError(validationErr);
       return;
     }
 
-    setLoading(true);
-    try {
-      // Step 1: Upload files + hash on backend
-      const prepareResult = await submitPropertyRequest(form, images, documents, submitterWallet);
+    const success = await submit({ form, images, documents });
 
-      // Step 2: Confirm with a placeholder txHash (no blockchain needed)
-      const fakeTxHash = `db_submit_${Date.now()}`;
-      await confirmPropertyRequest(prepareResult.tempId!, fakeTxHash);
-
-      dispatch(addToast({
-        type:    'success',
-        title:   'Request submitted',
-        message: 'Your property is under admin review. You will be notified when approved.',
-        duration: 6000,
-      }));
-
-      // Reset and redirect
+    if (success) {
       setForm(emptyPropertyRegistrationForm());
       setImages([]);
       setDocuments([]);
       router.push('/dashboard/my-requests');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Submission failed. Please try again.';
-      setError(msg);
-      dispatch(addToast({ type: 'error', title: 'Submission failed', message: msg }));
-    } finally {
-      setLoading(false);
     }
-  }, [form, images, documents, walletAddress, user, dispatch, router]);
+  }, [submit, form, images, documents, router, setFieldError]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -201,6 +181,16 @@ export function PropertyRegistrationForm() {
               options={PROPERTY_REGISTRATION_TYPES.map((t) => ({ value: t, label: t }))}
             />
           </div>
+
+          <Input
+            label="Land title number"
+            placeholder="e.g. LT-2024-00123 (government-issued)"
+            leftIcon={<Hash className="size-4" />}
+            hint="Optional — if provided, must be unique. Prevents duplicate registration."
+            value={form.titleNumber}
+            onChange={(e) => update({ titleNumber: e.target.value })}
+            disabled={loading}
+          />
 
           <Input
             label="Location / Address"
@@ -437,10 +427,32 @@ export function PropertyRegistrationForm() {
         </CardContent>
       </Card>
 
+      {/* ── Duplicate document warning ── */}
+      {dupWarning && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-semibold">Duplicate documents flagged</p>
+            <p className="mt-0.5">{dupWarning} The request has been submitted but will be reviewed manually.</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Error + Submit ── */}
-      {error && (
+      {fieldError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+          {fieldError}
+        </div>
+      )}
+
+      {/* ── Wallet required notice ── */}
+      {!isWalletConnected && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-semibold">Wallet not connected</p>
+            <p className="mt-0.5">You must connect your MetaMask wallet to pay the 0.07 ETH registration fee and submit a property request.</p>
+          </div>
         </div>
       )}
 
@@ -450,13 +462,13 @@ export function PropertyRegistrationForm() {
           variant="primary"
           size="lg"
           className="w-full"
-          disabled={loading}
+          disabled={loading || !isWalletConnected}
           leftIcon={loading ? <Loader2 className="size-5 animate-spin" /> : undefined}
         >
-          {loading ? 'Uploading & submitting…' : 'Submit registration request'}
+          {loading ? 'Uploading & awaiting signature…' : 'Pay 0.07 ETH & Register Property'}
         </Button>
         <p className="text-center text-xs text-muted">
-          Your property will be reviewed by an admin before it becomes publicly visible.
+          A non-refundable 0.07 ETH network fee applies. Your property will be reviewed by an admin before it becomes publicly visible.
           You can track the status under{' '}
           <a href="/dashboard/my-requests" className="font-medium text-accent hover:underline">
             My requests

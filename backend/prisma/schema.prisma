@@ -55,6 +55,9 @@ model Property {
   ownerWallet       String                          // current owner's wallet address
   status            PropertyStatus @default(PENDING) // PENDING | MINTED | DECLINED
 
+  // Land title number — must be unique across the registry
+  titleNumber       String?   @unique               // government-issued land title number
+
   // Property details (mirrors your contract struct)
   name              String
   location          String
@@ -104,6 +107,7 @@ model Document {
   sizeBytes   Int                                 // file size in bytes
 
   uploadedBy  String                              // wallet address of uploader
+  isDuplicate Boolean     @default(false)         // true if same hash exists elsewhere
   createdAt   DateTime    @default(now())
 
   @@index([propertyId])

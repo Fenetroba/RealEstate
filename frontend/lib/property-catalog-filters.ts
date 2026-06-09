@@ -66,20 +66,20 @@ export function filterCatalogProperties(
   if (filters.listingType === 'SALE') {
     filtered = filtered.filter((p) =>
       p.registryForSale === true ||
-      (p.registryForSale === undefined && p.listingType === 'SALE'),
+      (p.registryForRent !== true && p.listingType === 'SALE'),
     );
   }
   if (filters.listingType === 'RENT') {
     filtered = filtered.filter(
       (p) =>
         p.registryForRent === true ||
-        (p.registryForRent === undefined && p.listingType === 'RENT'),
+        (p.registryForSale !== true && p.listingType === 'RENT'),
     );
   }
   if (filters.listingType === 'BOTH') {
     filtered = filtered.filter(
       (p) =>
-        (p.registryForSale === true || p.listingType === 'SALE' || p.listingType === 'BOTH') &&
+        (p.registryForSale === true || p.listingType === 'SALE' || p.listingType === 'BOTH') ||
         (p.registryForRent === true || p.listingType === 'RENT' || p.listingType === 'BOTH'),
     );
   }

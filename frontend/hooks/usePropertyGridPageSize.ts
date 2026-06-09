@@ -17,9 +17,9 @@ function calculatePageSize(width: number): number {
 
 /** Cards per "page" = 2 rows for the current breakpoint. */
 export function usePropertyGridPageSize(): number {
-  const [pageSize, setPageSize] = useState(() =>
-    typeof window !== 'undefined' ? calculatePageSize(window.innerWidth) : 2,
-  );
+  // Always start with a fixed number (e.g. 6) to match the server-side render.
+  // We refine this value in useEffect after the component mounts on the client.
+  const [pageSize, setPageSize] = useState(6);
 
   useEffect(() => {
     const update = () => {

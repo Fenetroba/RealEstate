@@ -84,12 +84,10 @@ export async function loadRegistryProperties(
   try {
     const totalBn: bigint = await contract.getTotalProperties();
     const total = Number(totalBn);
-    
-    // If there are no properties, return empty array
-    if (total === 0) {
-      return [];
-    }
-    
+
+    // No properties registered yet
+    if (total === 0) return [];
+
     const list: RegistryProperty[] = [];
 
     for (let i = 0; i < total; i++) {
@@ -131,9 +129,9 @@ export async function loadRegistryProperties(
     }
     
     return list;
-  } catch (error) {
-    // Handle case where contract returns empty data or function doesn't exist
-    console.warn('Could not load registry properties:', error);
+  } catch {
+    // Contract not deployed or wrong ABI (e.g. Hardhat not running).
+    // useProperties already shows DB data as fallback — no need to log.
     return [];
   }
 }
@@ -171,9 +169,8 @@ export async function fetchOwnershipHistory(
         price: r.price as OwnershipHistoryEntry['price'],
       };
     });
-  } catch (error) {
-    // Handle case where contract returns empty data or ownership history doesn't exist
-    console.warn('Could not fetch ownership history for token', tokenId, error);
+  } catch {
+    // Chain unavailable or contract mismatch — return empty silently
     return [];
   }
 }

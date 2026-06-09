@@ -185,10 +185,13 @@ export default function MyRequestsPage() {
   const [loading,  setLoading]  = useState(true);
   const [filter,   setFilter]   = useState<Filter>('ALL');
 
+  const { address } = useAppSelector(s => s.wallet);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await apiClient.get('/properties/my-requests');
+      const params = address ? `?wallet=${address}` : '';
+      const { data } = await apiClient.get(`/properties/my-requests${params}`);
       setRequests(data.data ?? []);
     } catch {
       dispatch(addToast({ type: 'error', title: 'Failed to load requests' }));
@@ -196,7 +199,7 @@ export default function MyRequestsPage() {
     } finally {
       setLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, address]);
 
   useEffect(() => { void load(); }, [load]);
 

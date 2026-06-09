@@ -76,10 +76,7 @@ const quickLinks: Record<UserMode, { label: string; href: string }[]> = {
 };
 
 const adminLinks = [
-  { label: 'Admin dashboard', href: '/dashboard/property-approvals' },
-  { label: 'Submit registration', href: '/dashboard/listings/create' },
-  { label: 'My properties', href: '/dashboard/my-properties' },
-  { label: 'My requests', href: '/dashboard/my-requests' },
+  { label: 'Admin dashboard', href: '/dashboard/property-approvals' },  
   { label: 'Identity review', href: '/dashboard/verifications' },
   { label: 'Users', href: '/dashboard/users' },
 ];

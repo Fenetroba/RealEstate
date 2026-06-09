@@ -12,11 +12,11 @@ const {
   declineRequest,
 } = require("../controllers/admin.controller");
 
-// ── Middleware: accept either gov-wallet (on-chain flow) or JWT admin (DB flow) ──
+// ── Flexible auth: accept gov-wallet header OR JWT with ADMIN role ────────────
 function requireGovOrAdmin(req, res, next) {
   const govWallet = req.headers["x-gov-wallet"];
 
-  // Gov-wallet path (existing blockchain flow)
+  // Path 1: gov-wallet header (on-chain / legacy flow)
   if (govWallet) {
     if (govWallet.toLowerCase() !== process.env.GOV_WALLET?.toLowerCase()) {
       return res.status(403).json({ error: "Not authorized: wallet is not the government wallet" });
@@ -25,7 +25,7 @@ function requireGovOrAdmin(req, res, next) {
     return next();
   }
 
-  // JWT admin path (DB-only flow)
+  // Path 2: Bearer JWT with ADMIN role (DB-only flow)
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Missing x-gov-wallet header or Bearer token" });
@@ -47,14 +47,12 @@ function requireGovOrAdmin(req, res, next) {
 }
 
 // ── DB-backed routes (JWT auth) ───────────────────────────────────────────────
-router.get ("/db-requests",                        requireAuth, listDbRequests);
-router.get ("/db-requests/any/image/:documentId",  requireAuth, getRequestDocumentImage);
+router.get ("/db-requests",                        requireAuth,        listDbRequests);
+router.get ("/db-requests/any/image/:documentId",  requireAuth,        getRequestDocumentImage);
 
-// ── Approve / decline — accept gov-wallet OR JWT admin ────────────────────────
+// ── All admin action routes — accept gov-wallet OR JWT admin ──────────────────
+router.get ("/requests",              requireGovOrAdmin, listRequests);
 router.post("/approve/:requestId",    requireGovOrAdmin, approveRequest);
 router.post("/decline/:requestId",    requireGovOrAdmin, declineRequest);
-
-// ── Gov-wallet only routes (on-chain request list) ────────────────────────────
-router.get ("/requests",              requireGov, listRequests);
 
 module.exports = router;

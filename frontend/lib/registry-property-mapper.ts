@@ -122,7 +122,8 @@ export function registryToProperty(
     propertyType: mapPropertyType(registry.propertyType),
     listingType,
     investmentType: registry.isForRent && !registry.isForSale ? ['RENT'] : ['BUY'],
-    status: registry.isForSale || registry.isForRent ? 'ACTIVE' : 'DRAFT',
+    // All registry-approved properties are ACTIVE (browsable on the marketplace)
+    status: 'ACTIVE',
     registryForSale: registry.isForSale,
     registryForRent: registry.isForRent,
     location: {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Bath,
   Bed,
   Building2,
@@ -47,6 +48,7 @@ interface DocMeta {
   docType: string;
   createdAt: string;
   uploadedBy: string;
+  isDuplicate: boolean;
 }
 
 interface PropertyData {
@@ -65,6 +67,7 @@ interface PropertyData {
   yearBuilt: number;
   price: string;
   description: string | null;
+  titleNumber: string | null;
   documents: DocMeta[];
 }
 

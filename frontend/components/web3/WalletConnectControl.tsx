@@ -28,12 +28,12 @@ export function WalletConnectControl({
   const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
 
   const [mounted, setMounted] = useState(false);
-  const prevConnected = useRef<boolean>(false);
+  const prevConnected = useRef<boolean>(isConnected); // init from current state, not false
   const prevError = useRef<string | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Toast on connect / disconnect
+  // Toast on connect / disconnect — only fires when state genuinely changes
   useEffect(() => {
     if (!mounted) return;
 
