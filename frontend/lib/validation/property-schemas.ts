@@ -72,11 +72,15 @@ export function validatePropertyRegistrationForm(
 ): string | null {
   const body = propertyRegistrationSchema.safeParse({
     ...form,
-    // Provide empty strings for price fields not relevant to the listing type
     price:     form.isForSale ? form.price : (form.price || '0'),
     rentPrice: form.isForRent ? form.rentPrice : (form.rentPrice || '0'),
   });
   if (!body.success) return firstZodError(body.error);
+
+  // Require coordinates — must have selected a location from the map
+  if (form.latitude == null || form.longitude == null) {
+    return 'Please select a location using the map picker. Type an address in the location field and choose a suggestion.';
+  }
 
   const images = propertyRegistrationImagesSchema.safeParse(imageCount);
   if (!images.success) return firstZodError(images.error);

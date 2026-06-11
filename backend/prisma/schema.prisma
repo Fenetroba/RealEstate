@@ -60,8 +60,15 @@ model Property {
 
   // Property details (mirrors your contract struct)
   name              String
-  location          String
+  location          String         // human-readable address / area
   propertyType      String
+
+  // ── Geographic location (from Google Maps selection) ──────────────────────
+  address           String?        // full formatted address from Google
+  latitude          Float?         // WGS-84 decimal degrees
+  longitude         Float?         // WGS-84 decimal degrees
+  elevation         Float?         // meters above sea level (Google Elevation API)
+  placeId           String?        // Google Maps place_id for future API calls
   bedrooms          Int       @default(0)
   bathrooms         Int       @default(0)
   squareFeet    Int       @default(0)

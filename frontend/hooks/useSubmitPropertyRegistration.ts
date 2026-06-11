@@ -30,6 +30,9 @@ export function useSubmitPropertyRegistration(contract: Contract | null) {
         isForSale: boolean; isForRent: boolean; bedrooms: string; bathrooms: string;
         sqft: string; parking: string; floors: string; yearBuilt: string;
         titleNumber?: string;
+        // Geographic location
+        address?: string; latitude?: number | null; longitude?: number | null;
+        elevation?: number | null; placeId?: string;
       };
       images: File[];
       documents: File[];

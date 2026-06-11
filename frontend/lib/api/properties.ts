@@ -151,6 +151,9 @@ export async function submitPropertyRequest(
     rentPrice?: string; isForSale: boolean; isForRent: boolean;
     bedrooms: string; bathrooms: string; sqft: string; parking: string;
     floors: string; yearBuilt: string; titleNumber?: string;
+    // Geographic location
+    address?: string; latitude?: number | null; longitude?: number | null;
+    elevation?: number | null; placeId?: string;
   },
   imageFiles: File[],
   documentFiles: File[],
@@ -172,6 +175,12 @@ export async function submitPropertyRequest(
   body.append('floors', form.floors.trim());
   body.append('yearBuilt', form.yearBuilt.trim());
   if (form.titleNumber?.trim()) body.append('titleNumber', form.titleNumber.trim());
+  // Geographic location
+  if (form.address)                     body.append('address',   form.address);
+  if (form.latitude  != null)           body.append('latitude',  String(form.latitude));
+  if (form.longitude != null)           body.append('longitude', String(form.longitude));
+  if (form.elevation != null)           body.append('elevation', String(form.elevation));
+  if (form.placeId?.trim())             body.append('placeId',   form.placeId.trim());
   for (const file of imageFiles) body.append('images', file);
   for (const file of documentFiles) body.append('documents', file);
 

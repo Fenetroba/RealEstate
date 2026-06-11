@@ -140,8 +140,10 @@ export function registryToProperty(
       state,
       country: 'Ethiopia',
       zipCode: '—',
-      lat: 0,
-      lng: 0,
+      lat: registry.latitude ?? 0,
+      lng: registry.longitude ?? 0,
+      elevation: registry.elevation ?? null,
+      placeId: registry.placeId ?? null,
     },
     media: { images },
     amenities: {
@@ -231,7 +233,6 @@ export function mergeDbDataIntoRegistry(
     rentPriceEth: rentPriceRaw ? String(rentPriceRaw) : registry.rentPriceEth,
     isForSale: dbRow.isForSale === true || dbRow.isForSale === 'true' ? true : registry.isForSale,
     isForRent: dbRow.isForRent === true || dbRow.isForRent === 'true' ? true : registry.isForRent,
-    // Recompute priceWei from the DB price (stored as whole ETH)
     priceWei: (() => {
       const p = Number(dbRow.price ?? 0);
       if (!p) return registry.priceWei;
@@ -239,5 +240,11 @@ export function mergeDbDataIntoRegistry(
         ? BigInt(Math.round(p))
         : BigInt(Math.floor(p)) * BigInt('1000000000000000000');
     })(),
+    // Geographic location — DB wins over chain (chain doesn't store these)
+    latitude:  dbRow.latitude  != null ? Number(dbRow.latitude)  : registry.latitude  ?? null,
+    longitude: dbRow.longitude != null ? Number(dbRow.longitude) : registry.longitude ?? null,
+    elevation: dbRow.elevation != null ? Number(dbRow.elevation) : registry.elevation ?? null,
+    placeId:   dbRow.placeId   ? String(dbRow.placeId) : registry.placeId ?? null,
+    address:   dbRow.address   ? String(dbRow.address) : registry.address  ?? null,
   };
 }

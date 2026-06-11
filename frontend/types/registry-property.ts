@@ -6,7 +6,7 @@ export interface RegistryProperty {
   propertyType: string;
   priceEth: string;
   priceWei: bigint;
-  rentPriceEth?: string;    // monthly rent in ETH (undefined = not for rent)
+  rentPriceEth?: string;
   isForSale: boolean;
   isForRent: boolean;
   bedrooms: number;
@@ -18,6 +18,12 @@ export interface RegistryProperty {
   metadataHash: string;
   imagesRootHash: string;
   documentsRootHash: string;
+  // Geographic location — set from DB, null for on-chain-only properties
+  latitude?: number | null;
+  longitude?: number | null;
+  elevation?: number | null;
+  placeId?: string | null;
+  address?: string | null;   // full formatted address from Google Maps
 }
 
 export interface PropertyDbRow {

@@ -46,6 +46,9 @@ export interface PropertyLocation {
   lat: number;
   lng: number;
   neighborhood?: string;
+  // From Google Maps selection
+  elevation?: number | null;   // meters above sea level
+  placeId?: string | null;     // Google Maps place_id for future API calls
 }
 
 export interface PropertyMedia {

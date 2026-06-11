@@ -14,7 +14,6 @@ import {
   ImageIcon,
   Layers,
   Loader2,
-  MapPin,
   Ruler,
   Tag,
   Trash2,
@@ -29,6 +28,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { addToast } from '@/store/slices/uiSlice';
 import { useSubmitPropertyRegistration } from '@/hooks/useSubmitPropertyRegistration';
 import { useWeb3 } from '@/contexts/Web3Context';
+import { LocationPicker, type LocationData } from '@/components/maps/LocationPicker';
 import { PROPERTY_REGISTRATION_TYPES, emptyPropertyRegistrationForm, deriveListingFlags, type ListingTypeOption } from '@/lib/submit-property';
 import { validatePropertyRegistrationForm } from '@/lib/validation/property-schemas';
 const MAX_IMAGE_MB = 10;
@@ -192,15 +192,44 @@ export function PropertyRegistrationForm() {
             disabled={loading}
           />
 
-          <Input
-            label="Location / Address"
-            required
-            placeholder="Full address or area"
-            leftIcon={<MapPin className="size-4" />}
-            value={form.location}
-            onChange={(e) => update({ location: e.target.value })}
-            disabled={loading}
-          />
+          {/* ── Property Location with Google Maps ── */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-foreground">
+              Property Location <span className="text-destructive">*</span>
+            </label>
+            <LocationPicker
+              apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ''}
+              value={
+                form.latitude != null && form.longitude != null
+                  ? {
+                      address:   form.address,
+                      latitude:  form.latitude,
+                      longitude: form.longitude,
+                      elevation: form.elevation,
+                      placeId:   form.placeId,
+                    }
+                  : null
+              }
+              onChange={(loc: LocationData) => {
+                update({
+                  location:  loc.address,   // keep the plain text field in sync
+                  address:   loc.address,
+                  latitude:  loc.latitude,
+                  longitude: loc.longitude,
+                  elevation: loc.elevation,
+                  placeId:   loc.placeId,
+                });
+              }}
+              error={
+                fieldError?.toLowerCase().includes('location') ||
+                fieldError?.toLowerCase().includes('latitude') ||
+                fieldError?.toLowerCase().includes('longitude')
+                  ? fieldError ?? undefined
+                  : undefined
+              }
+              disabled={loading}
+            />
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Select

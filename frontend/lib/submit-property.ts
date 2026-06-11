@@ -16,11 +16,11 @@ export interface PropertyRegistrationFormState {
   name: string;
   location: string;
   propertyType: PropertyRegistrationType;
-  listingType: ListingTypeOption;  // single dropdown value
-  price: string;       // sale price in ETH (shown when listingType is SALE or BOTH)
-  rentPrice: string;   // monthly rent in ETH (shown when listingType is RENT or BOTH)
-  isForSale: boolean;  // derived from listingType
-  isForRent: boolean;  // derived from listingType
+  listingType: ListingTypeOption;
+  price: string;
+  rentPrice: string;
+  isForSale: boolean;
+  isForRent: boolean;
   bedrooms: string;
   bathrooms: string;
   sqft: string;
@@ -28,6 +28,12 @@ export interface PropertyRegistrationFormState {
   floors: string;
   yearBuilt: string;
   titleNumber: string;
+  // Geographic location (from Google Maps)
+  address:   string;
+  latitude:  number | null;
+  longitude: number | null;
+  elevation: number | null;
+  placeId:   string;
 }
 
 export const emptyPropertyRegistrationForm = (): PropertyRegistrationFormState => ({
@@ -46,6 +52,11 @@ export const emptyPropertyRegistrationForm = (): PropertyRegistrationFormState =
   floors: '',
   yearBuilt: '',
   titleNumber: '',
+  address:   '',
+  latitude:  null,
+  longitude: null,
+  elevation: null,
+  placeId:   '',
 });
 
 /** Derive isForSale / isForRent from a listingType selection */

@@ -40,6 +40,12 @@ function dbRowToRegistryProperty(row: PropertyDbRow): RegistryProperty | null {
     metadataHash:      String(r.metadataHash ?? ''),
     imagesRootHash:    String(r.imagesRootHash ?? ''),
     documentsRootHash: String(r.documentsRootHash ?? ''),
+    // Geographic location
+    latitude:  r.latitude  != null ? Number(r.latitude)  : null,
+    longitude: r.longitude != null ? Number(r.longitude) : null,
+    elevation: r.elevation != null ? Number(r.elevation) : null,
+    placeId:   r.placeId   ? String(r.placeId) : null,
+    address:   r.address   ? String(r.address) : null,
   };
 }
 

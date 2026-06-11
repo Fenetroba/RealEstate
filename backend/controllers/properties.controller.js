@@ -86,10 +86,21 @@ async function prepareRequest(req, res) {
       bedrooms, bathrooms, sqft, parking,
       floors, yearBuilt, price, description,
       titleNumber, isForSale, isForRent, rentPrice,
+      // Geographic location fields
+      address, latitude, longitude, elevation, placeId,
     } = req.body;
 
     if (!wallet || !name || !location || !propertyType) {
       return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Validate coordinates if provided
+    if ((latitude !== undefined && latitude !== null && latitude !== '') ||
+        (longitude !== undefined && longitude !== null && longitude !== '')) {
+      const lat = parseFloat(latitude);
+      const lng = parseFloat(longitude);
+      if (isNaN(lat) || lat < -90  || lat > 90)  return res.status(400).json({ error: "Invalid latitude"  });
+      if (isNaN(lng) || lng < -180 || lng > 180) return res.status(400).json({ error: "Invalid longitude" });
     }
 
     // Price validation depends on listing type
@@ -171,6 +182,12 @@ async function prepareRequest(req, res) {
       yearBuilt: parseInt(yearBuilt) || 0,
       price:     (price || "0").toString(),
       description: description || "",
+      // Geographic location
+      address:   address   || null,
+      latitude:  latitude  ? parseFloat(latitude)  : null,
+      longitude: longitude ? parseFloat(longitude) : null,
+      elevation: elevation ? parseFloat(elevation) : null,
+      placeId:   placeId   || null,
       imagesRootHash,
       documentsRootHash,
       version: 1,
@@ -249,7 +266,14 @@ async function confirmRequest(req, res) {
         parking:      metadataObj.parking    || 0,
         floors:       metadataObj.floors     || 0,
         yearBuilt:    metadataObj.yearBuilt  || 0,
-        price:        metadataObj.price ? metadataObj.price.toString() : "0",        description:  metadataObj.description || null,
+        price:        metadataObj.price ? metadataObj.price.toString() : "0",
+        description:  metadataObj.description || null,
+        // Geographic location
+        address:      metadataObj.address   || null,
+        latitude:     metadataObj.latitude  ?? null,
+        longitude:    metadataObj.longitude ?? null,
+        elevation:    metadataObj.elevation ?? null,
+        placeId:      metadataObj.placeId   || null,
         metadataHash, imagesRootHash, documentsRootHash,
       },
     });
@@ -430,6 +454,9 @@ async function listProperties(req, res) {
         isForSale: true, isForRent: true,
         metadataHash: true, createdAt: true,
         status: true,
+        // Geographic location
+        address: true, latitude: true, longitude: true,
+        elevation: true, placeId: true,
       },
       orderBy: { createdAt: "desc" },
     });
