@@ -16,7 +16,7 @@ const initialState: NotificationState = {
 
 export const fetchNotifications = createAsyncThunk(
   'notification/fetchAll',
-  async () => notificationApi.getAll()
+  async () => notificationApi.getAll(),
 );
 
 export const markAsRead = createAsyncThunk(
@@ -24,12 +24,12 @@ export const markAsRead = createAsyncThunk(
   async (id: string) => {
     await notificationApi.markRead(id);
     return id;
-  }
+  },
 );
 
 export const markAllAsRead = createAsyncThunk(
   'notification/markAllRead',
-  async () => notificationApi.markAllRead()
+  async () => notificationApi.markAllRead(),
 );
 
 const notificationSlice = createSlice({
@@ -37,24 +37,34 @@ const notificationSlice = createSlice({
   initialState,
   reducers: {
     addNotification: (state, action) => {
-      state.notifications.unshift(action.payload);
+      state.notifications.unshift(action.payload as Notification);
       state.unreadCount += 1;
     },
   },
   extraReducers: (builder) => {
+    // fetch
+    builder.addCase(fetchNotifications.pending, (state) => {
+      state.isLoading = true;
+    });
     builder.addCase(fetchNotifications.fulfilled, (state, action) => {
+      state.isLoading = false;
       state.notifications = action.payload;
-      state.unreadCount = action.payload.filter((n: Notification) => !n.isRead).length;
+      state.unreadCount = action.payload.filter((n) => !n.isRead).length;
+    });
+    builder.addCase(fetchNotifications.rejected, (state) => {
+      state.isLoading = false;
     });
 
+    // mark one read
     builder.addCase(markAsRead.fulfilled, (state, action) => {
-      const notification = state.notifications.find((n) => n.id === action.payload);
-      if (notification && !notification.isRead) {
-        notification.isRead = true;
+      const n = state.notifications.find((x) => x.id === action.payload);
+      if (n && !n.isRead) {
+        n.isRead = true;
         state.unreadCount = Math.max(0, state.unreadCount - 1);
       }
     });
 
+    // mark all read
     builder.addCase(markAllAsRead.fulfilled, (state) => {
       state.notifications.forEach((n) => { n.isRead = true; });
       state.unreadCount = 0;

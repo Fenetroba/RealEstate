@@ -208,7 +208,7 @@ async function prepareRequest(req, res) {
  */
 async function confirmRequest(req, res) {
   try {
-    const { tempId, txHash } = req.body;
+    const { tempId, txHash, onChainRequestId } = req.body;
     if (!tempId || !txHash) {
       return res.status(400).json({ error: "tempId and txHash are required" });
     }
@@ -298,15 +298,17 @@ async function confirmRequest(req, res) {
 
     const request = await prisma.request.create({
       data: {
-        propertyId:       property.id,
-        type:             "MINT",
-        status:           "PENDING",
+        propertyId:          property.id,
+        type:                "MINT",
+        status:              "PENDING",
         metadataHash,
         imagesRootHash,
         documentsRootHash,
-        metadataSnapshot: metadataObj,
-        submittedBy:      wallet.toLowerCase(),
-        documentIds:      savedDocs.map((d) => d.id),
+        metadataSnapshot:    metadataObj,
+        submittedBy:         wallet.toLowerCase(),
+        documentIds:         savedDocs.map((d) => d.id),
+        // Store the on-chain request index so admin can call approveRequest(id) later
+        onChainRequestId:    onChainRequestId !== undefined ? Number(onChainRequestId) : null,
       },
     });
 

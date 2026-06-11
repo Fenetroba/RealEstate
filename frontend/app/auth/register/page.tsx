@@ -13,6 +13,7 @@ import { SiteBrandLogo } from '@/components/layout/SiteBrandLogo';
 import { sitePageLeadClass, sitePageTitleClass } from '@/lib/site-typography';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { isMockAuthMode } from '@/lib/mock-auth';
 import { registerSchema, type RegisterForm } from '@/lib/validation/auth-schemas';
 import { registerUser } from '@/store/slices/authSlice';
@@ -244,6 +245,17 @@ export default function RegisterPage() {
               Sign in
             </Link>
           </p>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-background px-3 text-muted">or</span>
+            </div>
+          </div>
+
+          <GoogleAuthButton label="Sign up with Google" />
         </motion.div>
       </div>
     </div>

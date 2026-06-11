@@ -79,21 +79,20 @@ export function HorizontalScrollRow({
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
 
-    const target = event.target as HTMLElement;
-    if (target.closest('button')) return;
-
     const el = scrollerRef.current;
     if (!el || el.scrollWidth <= el.clientWidth) return;
 
-    event.preventDefault();
+    // Don't intercept clicks on native interactive elements
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input, select, textarea')) return;
 
+    // Record start position — don't preventDefault yet, that happens on first move > 4px
     dragRef.current = {
       active: true,
       startX: event.pageX,
       scrollLeft: el.scrollLeft,
       moved: false,
     };
-    setIsDragging(true);
     el.setPointerCapture(event.pointerId);
   };
 
@@ -103,14 +102,17 @@ export function HorizontalScrollRow({
     const el = scrollerRef.current;
     if (!el) return;
 
-    event.preventDefault();
-
     const walk = event.pageX - dragRef.current.startX;
-    if (Math.abs(walk) > 4) {
+
+    if (!dragRef.current.moved && Math.abs(walk) > 4) {
       dragRef.current.moved = true;
+      setIsDragging(true);
     }
 
-    el.scrollLeft = dragRef.current.scrollLeft - walk;
+    if (dragRef.current.moved) {
+      event.preventDefault();
+      el.scrollLeft = dragRef.current.scrollLeft - walk;
+    }
   };
 
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -126,6 +128,7 @@ export function HorizontalScrollRow({
   };
 
   const handleClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    // Only block the click if we actually dragged (moved > 4px)
     if (dragRef.current.moved) {
       event.preventDefault();
       event.stopPropagation();

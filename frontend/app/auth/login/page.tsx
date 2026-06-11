@@ -8,6 +8,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from 'lucide-react';
 import { AuthHeroIllustration } from '@/components/auth/AuthHeroIllustration';
+import { GoogleAuthButton } from '@/components/auth/GoogleAuthButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SiteBrandLogo } from '@/components/layout/SiteBrandLogo';
@@ -187,7 +188,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-         
+          <GoogleAuthButton label="Continue with Google" />
 
           <p className="text-center text-sm text-gray-500 mt-6">
             Don&apos;t have an account?{' '}

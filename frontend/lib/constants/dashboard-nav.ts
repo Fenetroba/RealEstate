@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   Bookmark,
   CircleUser,
   ClipboardCheck,
@@ -58,6 +59,7 @@ export const dashboardUserNavGroups: DashboardNavGroup[] = [
     links: [
       { href: '/dashboard/my-requests',   label: 'My requests',         icon: ClipboardList },
       { href: '/dashboard/transactions',  label: 'On-chain activity',   icon: Receipt       },
+      { href: '/dashboard/analytics',     label: 'My analytics',        icon: BarChart3     },
     ],
   },
 ];
@@ -72,9 +74,9 @@ export const dashboardAdminNavGroups: DashboardNavGroup[] = [
     links: [
       { href: '/dashboard/property-approvals', label: 'Property approvals', icon: ClipboardCheck },
       { href: '/dashboard/users',              label: 'Users & KYC review',  icon: UsersRound     },
+      { href: '/dashboard/admin-analytics',    label: 'Analytics',           icon: BarChart3      },
     ],
   },
-
 ];
 
 // Keep flat list for backward compat (sidebar still uses this for non-grouped rendering)

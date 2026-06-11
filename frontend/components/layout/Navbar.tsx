@@ -185,6 +185,16 @@ export default function Navbar() {
   // Use mounted guard for auth-dependent rendering
   const showAuth = mounted && isAuthenticated && !!user;
 
+  // Load notifications when user logs in
+  const { fetchNotifications } = React.useMemo(
+    () => ({ fetchNotifications: () => import('@/store/slices/notificationSlice').then(m => dispatch(m.fetchNotifications())) }),
+    [dispatch],
+  );
+  React.useEffect(() => {
+    if (showAuth) { void fetchNotifications(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAuth]);
+
   const isHome = pathname === '/';
   const isNavOverlay =
     isHome ||

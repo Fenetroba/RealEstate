@@ -1,6 +1,7 @@
 import "@nomicfoundation/hardhat-toolbox-mocha-ethers";
+import { defineConfig } from "hardhat/config";
 
-export default {
+export default defineConfig({
   solidity: {
     version: "0.8.28",
     settings: {
@@ -13,7 +14,9 @@ export default {
   },
   networks: {
     localhost: {
-      url: "http://127.0.0.1:8545"
+      type: "http",
+      url: "http://127.0.0.1:8545",
+      chainType: "l1"
     }
   }
-};
+});

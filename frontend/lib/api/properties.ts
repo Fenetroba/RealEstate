@@ -120,11 +120,12 @@ export interface SubmitPropertyRequestResult {
 export async function confirmPropertyRequest(
   tempId: string,
   txHash: string,
+  onChainRequestId?: number | null,
 ): Promise<void> {
   const res = await fetch(`${NFT_API_BASE_URL}/properties/request/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tempId, txHash }),
+    body: JSON.stringify({ tempId, txHash, onChainRequestId }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');

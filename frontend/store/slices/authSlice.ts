@@ -124,6 +124,18 @@ const authSlice = createSlice({
       state.isAuthenticated = true;
       state.error = null;
     },
+    // Used by the Google OAuth callback page
+    setGoogleAuthUser: (state, action: PayloadAction<{ user: User; accessToken: string }>) => {
+      state.user = action.payload.user;
+      state.accessToken = action.payload.accessToken;
+      state.isAuthenticated = true;
+      state.isLoading = false;
+      state.error = null;
+      // Persist access token so subsequent API calls work immediately
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('accessToken', action.payload.accessToken);
+      }
+    },
     clearAuth: (state) => {
       state.user = null;
       state.accessToken = null;
@@ -221,5 +233,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { setCredentials, clearAuth, clearError, updateUser } = authSlice.actions;
+export const { setCredentials, clearAuth, clearError, updateUser, setGoogleAuthUser } = authSlice.actions;
 export default authSlice.reducer;

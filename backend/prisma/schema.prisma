@@ -175,6 +175,10 @@ model Request {
   // Optional: reason for decline
   declineReason     String?
 
+  // On-chain request ID (index in the contract's requests mapping)
+  // Set by confirmRequest after the user's MetaMask tx is confirmed.
+  onChainRequestId  Int?
+
   @@index([status])
   @@index([submittedBy])
 }
@@ -249,4 +253,31 @@ enum RequestStatus {
   PENDING
   APPROVED
   DECLINED
+}
+
+// ─────────────────────────────────────────────
+// 6. notifications
+//    In-app notifications for users.
+// ─────────────────────────────────────────────
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  link      String?          // optional deep-link (e.g. /dashboard/my-requests)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+enum NotificationType {
+  SYSTEM
+  REQUEST_APPROVED
+  REQUEST_DECLINED
+  KYC_APPROVED
+  KYC_REJECTED
+  PROPERTY_VERIFIED
 }

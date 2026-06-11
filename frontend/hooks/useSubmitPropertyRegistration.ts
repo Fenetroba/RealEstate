@@ -129,12 +129,25 @@ export function useSubmitPropertyRegistration(contract: Contract | null) {
         );
         
         dispatch(setWalletMessage('Waiting for blockchain confirmation…'));
-        await tx.wait();
+        const receipt = await tx.wait();
+
+        // Extract the on-chain requestId from the RequestSubmitted event
+        // RequestSubmitted(uint256 indexed requestId, address requester, string name)
+        // The requestId is the second topic (first indexed param)
+        let onChainRequestId: number | null = null;
+        for (const log of receipt?.logs ?? []) {
+          if (log.topics && log.topics.length >= 2) {
+            try {
+              onChainRequestId = Number(BigInt(log.topics[1]));
+              break;
+            } catch { /* skip */ }
+          }
+        }
 
         dispatch(setWalletMessage('Confirming request with the server…'));
         
         // Step 3: Confirm with backend so it isn't orphaned
-        await confirmPropertyRequest(apiResult.tempId!, tx.hash);
+        await confirmPropertyRequest(apiResult.tempId!, tx.hash, onChainRequestId);
 
         dispatch(setWalletMessage('Registration request completed successfully.'));
         dispatch(

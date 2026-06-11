@@ -1,14 +1,46 @@
 // controllers/admin.controller.js
 
 const { PrismaClient } = require("@prisma/client");
-const { mintPropertyOnChain, approveUpdateOnChain, getPropertyNFT } = require("../utils/contract");
+const { approveUpdateOnChain, getPropertyNFT } = require("../utils/contract");
+const { createNotification } = require("./notifications.controller");
 
 const prisma = new PrismaClient();
 
-/**
- * GET /api/admin/requests
- * Query: ?status=PENDING|APPROVED|DECLINED&type=MINT|UPDATE
- */
+// ── Notify the user who submitted the request ─────────────────────────────────
+async function notifyUser(submittedBy, type, title, message, link) {
+  try {
+    let userId = null;
+    if (submittedBy.startsWith("user:")) {
+      userId = submittedBy.replace("user:", "");
+    } else {
+      const user = await prisma.user.findFirst({
+        where: { walletAddress: submittedBy },
+        select: { id: true },
+      });
+      userId = user?.id ?? null;
+    }
+    if (userId) {
+      await createNotification({ userId, type, title, message, link });
+    }
+  } catch (err) {
+    console.warn("[notify] Failed to create notification:", err.message);
+  }
+}
+
+// ── Extract minted tokenId from RequestApproved event logs ───────────────────
+function extractMintedTokenId(receipt) {
+  try {
+    for (const log of receipt.logs ?? []) {
+      if (log.topics && log.topics.length >= 2 && log.data && log.data !== "0x") {
+        const tokenId = BigInt(log.data).toString();
+        if (tokenId !== "0") return tokenId;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+// ── GET /api/admin/requests ───────────────────────────────────────────────────
 async function listRequests(req, res) {
   try {
     const { status = "PENDING", type } = req.query;
@@ -32,11 +64,7 @@ async function listRequests(req, res) {
   }
 }
 
-/**
- * GET /api/admin/db-requests
- * Full property + documents for admin review — no blockchain required.
- * Query: ?status=PENDING|APPROVED|DECLINED&type=MINT|UPDATE
- */
+// ── GET /api/admin/db-requests ────────────────────────────────────────────────
 async function listDbRequests(req, res) {
   try {
     const { status, type } = req.query;
@@ -71,10 +99,7 @@ async function listDbRequests(req, res) {
   }
 }
 
-/**
- * GET /api/admin/db-requests/:requestId/image/:documentId
- * Stream a single image for admin preview (requires auth, not gov wallet)
- */
+// ── GET /api/admin/db-requests/:requestId/image/:documentId ─────────────────
 async function getRequestDocumentImage(req, res) {
   try {
     const doc = await prisma.document.findUnique({
@@ -91,9 +116,7 @@ async function getRequestDocumentImage(req, res) {
   }
 }
 
-/**
- * POST /api/admin/approve/:requestId
- */
+// ── POST /api/admin/approve/:requestId ───────────────────────────────────────
 async function approveRequest(req, res) {
   const { requestId } = req.params;
   const { onChainRequestId } = req.body;
@@ -113,32 +136,37 @@ async function approveRequest(req, res) {
 
     // ── MINT ──────────────────────────────────────────────────────────────────
     if (request.type === "MINT") {
-      // If onChainRequestId provided, attempt blockchain mint; otherwise DB-only approval
-      let mintedTokenId = onChainRequestId?.toString() ?? `db_${Date.now()}`;
+      let mintedTokenId = `db_${Date.now()}`;
       let txHash = null;
 
-      if (onChainRequestId !== undefined && onChainRequestId !== null) {
+      const onChainReqId = request.onChainRequestId ?? onChainRequestId ?? null;
+
+      if (
+        onChainReqId !== null &&
+        onChainReqId !== undefined &&
+        process.env.PROPERTY_NFT_ADDRESS &&
+        process.env.PROPERTY_NFT_ADDRESS !== "0xYourContractAddressHere"
+      ) {
         try {
-          const receipt = await mintPropertyOnChain(onChainRequestId);
-          txHash = receipt.transactionHash;
-          try {
-            const approvedEvent = receipt.events?.find((e) => e.event === "RequestApproved");
-            if (approvedEvent) mintedTokenId = approvedEvent.args.propertyId.toString();
-          } catch (_) {}
+          const nftContract = getPropertyNFT();
+          const approveTx = await nftContract.approveRequest(BigInt(onChainReqId));
+          const approveReceipt = await approveTx.wait();
+          txHash = approveReceipt.hash;
+          const extracted = extractMintedTokenId(approveReceipt);
+          if (extracted) mintedTokenId = extracted;
+          console.log(`[chain] Minted NFT tokenId=${mintedTokenId} txHash=${txHash}`);
         } catch (chainErr) {
-          console.warn("[chain] mintProperty failed, doing DB-only approval:", chainErr.message);
-          // Continue with DB-only approval
+          console.warn("[chain] approveRequest on-chain failed, DB-only:", chainErr.message);
+          mintedTokenId = `db_${Date.now()}`;
         }
+      } else {
+        console.log("[chain] No onChainRequestId — DB-only approval");
       }
 
       await prisma.$transaction([
         prisma.request.update({
           where: { id: requestId },
-          data: {
-            status:     "APPROVED",
-            reviewedBy: req.govWallet || "admin",
-            reviewedAt: new Date(),
-          },
+          data: { status: "APPROVED", reviewedBy: req.govWallet || "admin", reviewedAt: new Date() },
         }),
         prisma.property.update({
           where: { id: request.propertyId },
@@ -156,6 +184,14 @@ async function approveRequest(req, res) {
           },
         }),
       ]);
+
+      await notifyUser(
+        request.submittedBy,
+        "REQUEST_APPROVED",
+        "Property approved 🎉",
+        `Your property "${request.metadataSnapshot?.name || "submission"}" has been approved and is now live on the marketplace.`,
+        "/dashboard/my-requests",
+      );
 
       return res.json({
         success: true,
@@ -179,26 +215,21 @@ async function approveRequest(req, res) {
       const newVersionNo = lastVersion ? lastVersion.versionNo + 1 : 2;
 
       let txHash = null;
-      // Try on-chain, fall back to DB-only
       try {
         const onChainUpdates = await getPropertyNFT().getUpdateRequests(property.tokenId);
-        let pendingIndex = onChainUpdates.findIndex((u) => Number(u.status) === 0);
+        const pendingIndex = onChainUpdates.findIndex((u) => Number(u.status) === 0);
         if (pendingIndex !== -1) {
           const receipt = await approveUpdateOnChain(property.tokenId, pendingIndex);
           txHash = receipt.transactionHash;
         }
       } catch (chainErr) {
-        console.warn("[chain] approveUpdateRequest failed, doing DB-only:", chainErr.message);
+        console.warn("[chain] approveUpdateRequest failed, DB-only:", chainErr.message);
       }
 
       await prisma.$transaction([
         prisma.request.update({
           where: { id: requestId },
-          data: {
-            status:     "APPROVED",
-            reviewedBy: req.govWallet || "admin",
-            reviewedAt: new Date(),
-          },
+          data: { status: "APPROVED", reviewedBy: req.govWallet || "admin", reviewedAt: new Date() },
         }),
         prisma.property.update({
           where: { id: request.propertyId },
@@ -236,15 +267,14 @@ async function approveRequest(req, res) {
     }
 
     return res.status(400).json({ error: "Unknown request type" });
+
   } catch (err) {
     console.error("[approveRequest]", err);
     return res.status(500).json({ error: err.message });
   }
 }
 
-/**
- * POST /api/admin/decline/:requestId
- */
+// ── POST /api/admin/decline/:requestId ───────────────────────────────────────
 async function declineRequest(req, res) {
   const { requestId } = req.params;
   const { reason } = req.body;
@@ -274,12 +304,28 @@ async function declineRequest(req, res) {
         : []),
     ]);
 
+    await notifyUser(
+      request.submittedBy,
+      "REQUEST_DECLINED",
+      "Property request declined",
+      reason
+        ? `Your submission was declined: ${reason}`
+        : "Your property submission was reviewed and declined. You may resubmit after making corrections.",
+      "/dashboard/my-requests",
+    );
+
     return res.json({ success: true, message: "Request declined", requestId, reason });
+
   } catch (err) {
     console.error("[declineRequest]", err);
     return res.status(500).json({ error: err.message });
   }
 }
 
-module.exports = { listRequests, listDbRequests, getRequestDocumentImage, approveRequest, declineRequest };
-
+module.exports = {
+  listRequests,
+  listDbRequests,
+  getRequestDocumentImage,
+  approveRequest,
+  declineRequest,
+};

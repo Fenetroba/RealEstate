@@ -104,10 +104,19 @@ export function WalletConnectControl({
   if (isConnected && address) {
     return (
       <div className={cn('flex items-center gap-2', fullWidth && 'w-full', className)}>
-        <span
+        
+
+        <button
+          type="button"
+          onClick={disconnect}
+          className="inline-flex size-8 p-3 items-center justify-center rounded-full border border-green-500/30 text-green-600 cursor-pointer hover:text-green-700 dark:text-green-400 dark:hover:bg-green-950"
+          title="Disconnect wallet"
+          aria-label="Disconnect wallet"
+        >
+          <span
           className={cn(
-            'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-xs',
-            'border-green-500/40 bg-green-500/10 text-green-600 dark:text-green-400',
+            'inline-flex items-center ',
+            
             chipClassName,
           )}
         >
@@ -115,23 +124,15 @@ export function WalletConnectControl({
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex size-2 rounded-full bg-green-500" />
           </span>
-          {truncateAddress(address)}
+          {/* {truncateAddress(address)} */}
+          <Wallet/>
         </span>
-
-        <button
-          type="button"
-          onClick={disconnect}
-          className="inline-flex size-8 items-center justify-center rounded-full border border-green-500/30 text-green-600 transition-colors hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-950"
-          title="Disconnect wallet"
-          aria-label="Disconnect wallet"
-        >
-          <LogOut className="size-3.5" />
         </button>
       </div>
     );
   }
 
-  // ── Disconnected ────────────────────────────────────────────────────────────
+
   return (
     <Button
       variant={walletVariant}

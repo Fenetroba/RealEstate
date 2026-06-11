@@ -339,6 +339,10 @@ export type NotificationType =
   | 'RENTAL_DUE'
   | 'PRICE_CHANGE'
   | 'NEW_MESSAGE'
+  | 'REQUEST_APPROVED'
+  | 'REQUEST_DECLINED'
+  | 'KYC_APPROVED'
+  | 'KYC_REJECTED'
   | 'SYSTEM';
 
 export interface Notification {

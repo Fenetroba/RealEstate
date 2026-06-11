@@ -39,4 +39,32 @@ function requireGov(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireGov };
+/**
+ * requireAdmin — requires ADMIN role in the JWT payload (set during login)
+ */
+function requireAdmin(req, res, next) {
+  if (req.userRole !== "ADMIN") {
+    return res.status(403).json({ success: false, message: "Admin access required" });
+  }
+  next();
+}
+
+/**
+ * requireGovOrAdmin — allows either a gov wallet header OR a JWT ADMIN role.
+ * Used by routes that admins access via the web UI (Bearer token).
+ */
+function requireGovOrAdmin(req, res, next) {
+  // Check JWT role first (web UI admins)
+  if (req.userRole === "ADMIN") {
+    return next();
+  }
+  // Fall back to gov wallet header
+  const wallet = req.headers["x-gov-wallet"];
+  if (wallet && wallet.toLowerCase() === process.env.GOV_WALLET?.toLowerCase()) {
+    req.govWallet = wallet.toLowerCase();
+    return next();
+  }
+  return res.status(403).json({ success: false, message: "Admin or gov wallet access required" });
+}
+
+module.exports = { requireAuth, requireGov, requireAdmin, requireGovOrAdmin };

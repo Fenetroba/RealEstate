@@ -41,9 +41,18 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   const isForSale = Boolean(property.registryForSale);
   const isForRent = Boolean(property.registryForRent);
 
-  // Properties with DB-only tokenIds (pending_* or db_*) are not yet on-chain
-  // — blockchain transactions are not possible until the contract is deployed
-  const isOnChain = /^\d+$/.test(tokenId);
+  // "pending_*" tokenIds are truly unreviewed — no actions allowed.
+  // "db_*" tokenIds are DB-only approvals (contract was unavailable when admin approved).
+  //   These show action buttons but warn the user that on-chain tx is not possible yet.
+  // Pure numeric tokenIds come from a real on-chain mint — full contract interaction.
+  const isPending = tokenId.startsWith('pending_');
+  const isDbApproved = tokenId.startsWith('db_');
+  const isOnChain = !isPending && !isDbApproved && /^\d+$/.test(tokenId);
+
+  // DB-approved properties can't interact with the real contract (no on-chain token).
+  // Fall back to mock mode so the buttons still show and give user feedback.
+  const effectiveMockMode = mockMode || isDbApproved;
+
   // The contract stores price as whole ETH integers (not wei).
   // For buyProperty we send the ETH value as {value: parseEther(price)}.
   // For listProperty we send the whole number (e.g. 5, not 5e18).
@@ -61,19 +70,19 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   );
 
   const canList =
-    mockMode
+    effectiveMockMode
       ? isOwner && !isForSale
       : isOnChain && isConnected && isOwner && !isForSale && Boolean(writeContract);
   const canListForRent =
-    mockMode
+    effectiveMockMode
       ? isOwner && !isForRent
       : isOnChain && isConnected && isOwner && !isForRent && Boolean(writeContract);
   const canBuy =
-    mockMode
+    effectiveMockMode
       ? isForSale && !isOwner
       : isOnChain && isConnected && isForSale && !isOwner && Boolean(writeContract);
   const canRent =
-    mockMode
+    effectiveMockMode
       ? isForRent && !isOwner
       : isOnChain && isConnected && isForRent && !isOwner && Boolean(writeContract);
 
@@ -87,7 +96,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   const refresh = () => router.refresh();
 
   const requireWallet = (action: () => void) => {
-    if (mockMode) {
+    if (effectiveMockMode) {
       action();
       return;
     }
@@ -116,7 +125,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   };
 
   const handleList = async () => {
-    if (mockMode) {
+    if (effectiveMockMode) {
       setTxPending(true);
       await new Promise((r) => setTimeout(r, 500));
       dispatch(
@@ -158,7 +167,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   };
 
   const handleListForRent = async () => {
-    if (mockMode) {
+    if (effectiveMockMode) {
       setTxPending(true);
       await new Promise((r) => setTimeout(r, 500));
       dispatch(
@@ -202,7 +211,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   };
 
   const handleBuy = async () => {
-    if (mockMode) {
+    if (effectiveMockMode) {
       setTxPending(true);
       await new Promise((r) => setTimeout(r, 500));
       dispatch(
@@ -245,7 +254,7 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   };
 
   const handleRent = async () => {
-    if (mockMode) {
+    if (effectiveMockMode) {
       setTxPending(true);
       await new Promise((r) => setTimeout(r, 500));
       dispatch(
@@ -345,8 +354,10 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
         ) : null}
         {!hasRegistryAction && property.blockchain?.isVerified ? (
           <p className="text-center text-sm text-muted">
-            {!isOnChain
-              ? 'This property is registered in the database but not yet minted on-chain. Blockchain transactions (buy, rent, list) will be available once the smart contract is deployed and the property is minted.'
+            {isPending
+              ? 'This property is pending admin review. Marketplace actions will be available once it is approved.'
+              : isDbApproved
+              ? 'This property was approved but the smart contract was not deployed at the time. Re-deploying the contract and re-approving will enable on-chain transactions.'
               : 'Connect your wallet to buy, rent, or list this property on-chain.'
             }
           </p>
