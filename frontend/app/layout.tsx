@@ -4,6 +4,7 @@ import './globals.css';
 import AppProviders from '@/components/providers/AppProviders';
 import ThemeProvider from '@/components/providers/ThemeProvider';
 import { ToastContainer } from '@/components/ui/Toast';
+import { SupportWidget } from '@/components/support/SupportWidget';
 
 const montserrat = Montserrat({
   variable: '--font-montserrat',
@@ -69,6 +70,7 @@ export default function RootLayout({
           <ThemeProvider>
             {children}
             <ToastContainer />
+            <SupportWidget />
           </ThemeProvider>
         </AppProviders>
       </body>

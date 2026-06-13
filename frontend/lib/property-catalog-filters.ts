@@ -36,7 +36,11 @@ export function filterCatalogProperties(
   source: Property[],
   filters: PropertyFilters,
 ): Property[] {
-  let filtered = [...source];
+  // Only show properties that are actively listed for sale or rent.
+  // DRAFT = owned but not on market (isForSale=false AND isForRent=false).
+  let filtered = source.filter(
+    (p) => p.status === 'ACTIVE' || p.registryForSale === true || p.registryForRent === true,
+  );
 
   if (filters.query?.trim()) {
     filtered = filtered.filter((p) => propertyMatchesQuery(p, filters.query!));

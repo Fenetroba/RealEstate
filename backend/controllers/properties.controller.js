@@ -434,12 +434,20 @@ async function submitUpdateRequest(req, res) {
 
 /**
  * GET /api/properties
+ * Returns MINTED properties that are actively listed (isForSale OR isForRent).
+ * Owned-but-not-listed properties are excluded from the public marketplace.
  */
 async function listProperties(req, res) {
   try {
-    const { location, propertyType, bedrooms } = req.query;
+    const { location, propertyType, bedrooms, showAll } = req.query;
 
     const where = { status: "MINTED" };
+
+    // By default only show listed properties — pass ?showAll=true to include all MINTED
+    if (showAll !== "true") {
+      where.OR = [{ isForSale: true }, { isForRent: true }];
+    }
+
     if (location)     where.location     = { contains: location, mode: "insensitive" };
     if (propertyType) where.propertyType = propertyType;
     if (bedrooms)     where.bedrooms     = parseInt(bedrooms);
@@ -582,23 +590,27 @@ async function getMyRequests(req, res) {
 
 /**
  * GET /api/properties/mine
- * Returns all MINTED (approved) properties that belong to the authenticated user's wallet.
- * Also optionally accepts ?wallet= for unauthenticated wallet-only queries.
+ * Returns all MINTED properties that belong to the authenticated user's wallet.
+ * Matches by:
+ *   1. Wallet address stored in the user's profile (DB link)
+ *   2. ?wallet= query param (MetaMask wallet passed directly from frontend)
+ * Both are combined — a buyer whose wallet isn't yet saved in their profile
+ * can still see purchased properties by passing ?wallet=
  */
 async function getMyProperties(req, res) {
   try {
     const userId = req.userId;
 
-    // Look up the user's wallet address stored in the DB
     const user = await prisma.user.findUnique({
       where:  { id: userId },
       select: { walletAddress: true },
     });
 
-    // Build the wallet list — combine DB wallet + optional ?wallet query param
-    const wallets = [];
-    if (user?.walletAddress) wallets.push(user.walletAddress.toLowerCase());
-    if (req.query.wallet)    wallets.push(req.query.wallet.toLowerCase());
+    // Collect all wallets to match — deduplicate, lowercase
+    const walletSet = new Set();
+    if (user?.walletAddress) walletSet.add(user.walletAddress.toLowerCase());
+    if (req.query.wallet)    walletSet.add(req.query.wallet.toLowerCase());
+    const wallets = [...walletSet];
 
     if (wallets.length === 0) {
       return res.json({ success: true, data: [] });
@@ -615,15 +627,70 @@ async function getMyProperties(req, res) {
         bedrooms: true, bathrooms: true, squareFeet: true,
         parking: true, floors: true, yearBuilt: true,
         price: true, description: true, titleNumber: true,
+        isForSale: true, isForRent: true, rentPrice: true,
         metadataHash: true, imagesRootHash: true, documentsRootHash: true,
-        status: true, createdAt: true,
+        status: true, createdAt: true, updatedAt: true,
+        // Include latest version for deed details
+        metadataVersions: {
+          orderBy: { versionNo: "desc" },
+          take: 1,
+          select: { versionNo: true, approvedAt: true, approvedBy: true },
+        },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { updatedAt: "desc" },
     });
 
     return res.json({ success: true, data: properties });
   } catch (err) {
     console.error("[getMyProperties]", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * POST /api/properties/:id/delist
+ * Remove a property from the marketplace (set isForSale=false, isForRent=false).
+ * Called by the new owner after purchase as a fallback in case the
+ * PropertySold event listener missed the event (backend was down).
+ * Also called when the owner manually wants to delist.
+ */
+async function delistProperty(req, res) {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    // Find the property
+    const property = await prisma.property.findUnique({
+      where: { id },
+      select: { id: true, ownerWallet: true, status: true },
+    });
+    if (!property) return res.status(404).json({ success: false, message: "Property not found" });
+    if (property.status !== "MINTED") {
+      return res.status(400).json({ success: false, message: "Property is not active" });
+    }
+
+    // Verify ownership — match by user's linked wallet or by ?wallet= param
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletAddress: true },
+    });
+    const userWallets = [
+      user?.walletAddress?.toLowerCase(),
+      req.body.wallet?.toLowerCase(),
+    ].filter(Boolean);
+
+    if (!userWallets.includes(property.ownerWallet.toLowerCase())) {
+      return res.status(403).json({ success: false, message: "Only the owner can delist this property" });
+    }
+
+    await prisma.property.update({
+      where: { id },
+      data:  { isForSale: false, isForRent: false },
+    });
+
+    return res.json({ success: true, message: "Property removed from marketplace" });
+  } catch (err) {
+    console.error("[delistProperty]", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -638,4 +705,5 @@ module.exports = {
   getPropertyDocuments,
   getMyRequests,
   getMyProperties,
+  delistProperty,
 };

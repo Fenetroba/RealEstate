@@ -288,3 +288,49 @@ enum NotificationType {
   KYC_REJECTED
   PROPERTY_VERIFIED
 }
+
+
+//    User-submitted support requests with chat thread.
+// ─────────────────────────────────────────────
+model SupportTicket {
+  id          String          @id @default(uuid())
+  userId      String?         // null if unauthenticated guest
+  guestEmail  String?         // for unauthenticated users
+  guestName   String?
+  subject     String
+  status      TicketStatus    @default(OPEN)
+  priority    TicketPriority  @default(NORMAL)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  messages    SupportMessage[]
+
+  @@index([status])
+  @@index([userId])
+}
+
+model SupportMessage {
+  id        String        @id @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  body      String
+  isAdmin   Boolean       @default(false)   // true = sent by admin
+  senderName String?                        // display name
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}

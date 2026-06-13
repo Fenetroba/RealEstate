@@ -29,7 +29,14 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
   const { connect, contract: writeContract } = useWeb3();
   const walletAddress = useAppSelector((s) => s.wallet.address);
   const isConnected = useAppSelector((s) => s.wallet.isConnected);
+  const { user, isAuthenticated } = useAppSelector((s) => s.auth);
   const mockMode = isRegistryMockMode();
+
+  // ── Access guards ─────────────────────────────────────────────────────────
+  // Admins should not be able to buy/rent properties (conflict of interest).
+  const isAdmin = user?.role === 'ADMIN';
+  // KYC must be approved before buying or renting.
+  const isVerified = Boolean(user?.isVerified);
 
   const [listOpen, setListOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
@@ -77,14 +84,19 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
     effectiveMockMode
       ? isOwner && !isForRent
       : isOnChain && isConnected && isOwner && !isForRent && Boolean(writeContract);
+  // Admins cannot buy/rent — only verified non-admin users can.
   const canBuy =
-    effectiveMockMode
-      ? isForSale && !isOwner
-      : isOnChain && isConnected && isForSale && !isOwner && Boolean(writeContract);
+    !isAdmin && isVerified && (
+      effectiveMockMode
+        ? isForSale && !isOwner
+        : isOnChain && isConnected && isForSale && !isOwner && Boolean(writeContract)
+    );
   const canRent =
-    effectiveMockMode
-      ? isForRent && !isOwner
-      : isOnChain && isConnected && isForRent && !isOwner && Boolean(writeContract);
+    !isAdmin && isVerified && (
+      effectiveMockMode
+        ? isForRent && !isOwner
+        : isOnChain && isConnected && isForRent && !isOwner && Boolean(writeContract)
+    );
 
   const displayPrice = Number(property.price).toLocaleString(undefined, {
     maximumFractionDigits: 4,
@@ -231,15 +243,37 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
     try {
       const tx = await writeContract.buyProperty(tokenId, { value: priceWei });
       await tx.wait();
+
+      // Immediately delist in DB — removes it from the marketplace.
+      // The PropertySold event listener also does this, but as a fallback
+      // we call the API directly in case the listener missed the event.
+      try {
+        const dbId = property.blockchain?.dbId;
+        if (dbId) {
+          const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+          if (token) {
+            await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000/api'}/properties/${dbId}/delist`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ wallet: walletAddress }),
+              },
+            );
+          }
+        }
+      } catch { /* silent — event listener handles this too */ }
+
       dispatch(
         addToast({
           type: 'success',
-          title: 'Purchase complete',
-          message: `You bought NFT #${tokenId}.`,
+          title: 'Purchase complete! 🎉',
+          message: `You now own ${property.title}. Redirecting to My Properties…`,
+          duration: 6000,
         }),
       );
       setBuyOpen(false);
-      refresh();
+      router.push('/dashboard/my-properties');
     } catch (err) {
       dispatch(
         addToast({
@@ -277,12 +311,13 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
       dispatch(
         addToast({
           type: 'success',
-          title: 'Rental complete',
-          message: `You rented NFT #${tokenId}.`,
+          title: 'Rental complete! 🎉',
+          message: `You are now renting ${property.title}. Redirecting to My Properties…`,
+          duration: 6000,
         }),
       );
       setRentOpen(false);
-      refresh();
+      router.push('/dashboard/my-properties');
     } catch (err) {
       dispatch(
         addToast({
@@ -353,14 +388,54 @@ export function PropertyDetailRegistryActions({ property }: PropertyDetailRegist
           </Button>
         ) : null}
         {!hasRegistryAction && property.blockchain?.isVerified ? (
-          <p className="text-center text-sm text-muted">
-            {isPending
-              ? 'This property is pending admin review. Marketplace actions will be available once it is approved.'
-              : isDbApproved
-              ? 'This property was approved but the smart contract was not deployed at the time. Re-deploying the contract and re-approving will enable on-chain transactions.'
-              : 'Connect your wallet to buy, rent, or list this property on-chain.'
-            }
-          </p>
+          <div className="space-y-2 text-sm">
+            {/* Admin guard */}
+            {isAdmin && (isForSale || isForRent) && !isOwner && (
+              <p className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-muted">
+                <ShoppingCart className="size-4 shrink-0 text-muted" />
+                Administrators cannot purchase or rent properties.
+              </p>
+            )}
+            {/* Verification guard */}
+            {!isAdmin && isAuthenticated && !isVerified && (isForSale || isForRent) && !isOwner && (
+              <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                <span className="mt-0.5 shrink-0">⚠️</span>
+                <span>
+                  Your account is not verified. Complete{' '}
+                  <a href="/dashboard/verification" className="font-semibold underline hover:no-underline">
+                    KYC verification
+                  </a>{' '}
+                  to buy or rent properties.
+                </span>
+              </p>
+            )}
+            {/* Not logged in */}
+            {!isAuthenticated && (isForSale || isForRent) && (
+              <p className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2.5 text-muted">
+                <ShoppingCart className="size-4 shrink-0" />
+                <span>
+                  <a href="/auth/login" className="font-semibold text-accent hover:underline">Sign in</a>
+                  {' '}and complete KYC verification to buy or rent.
+                </span>
+              </p>
+            )}
+            {/* Technical / contract state reasons */}
+            {isPending && (
+              <p className="text-center text-muted">
+                This property is pending admin review. Marketplace actions will be available once approved.
+              </p>
+            )}
+            {isDbApproved && !isPending && (
+              <p className="text-center text-muted">
+                This property was approved without a deployed smart contract. Re-approval after deployment will enable transactions.
+              </p>
+            )}
+            {!isPending && !isDbApproved && !isAdmin && isAuthenticated && isVerified && (
+              <p className="text-center text-muted">
+                Connect your wallet to buy, rent, or list this property on-chain.
+              </p>
+            )}
+          </div>
         ) : null}
       </div>
 

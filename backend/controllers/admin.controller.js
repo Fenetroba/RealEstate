@@ -1,7 +1,7 @@
 // controllers/admin.controller.js
 
 const { PrismaClient } = require("@prisma/client");
-const { approveUpdateOnChain, getPropertyNFT } = require("../utils/contract");
+const { approveUpdateOnChain, getPropertyNFT, resetSignerSingleton } = require("../utils/contract");
 const { createNotification } = require("./notifications.controller");
 
 const prisma = new PrismaClient();
@@ -28,12 +28,17 @@ async function notifyUser(submittedBy, type, title, message, link) {
 }
 
 // ── Extract minted tokenId from RequestApproved event logs ───────────────────
+// RequestApproved(uint256 indexed requestId, uint256 propertyId)
+// requestId is the first indexed topic; propertyId is in the non-indexed data field.
 function extractMintedTokenId(receipt) {
   try {
     for (const log of receipt.logs ?? []) {
+      // Must have at least 2 topics (event sig + indexed requestId)
+      // data encodes the non-indexed propertyId (uint256)
       if (log.topics && log.topics.length >= 2 && log.data && log.data !== "0x") {
         const tokenId = BigInt(log.data).toString();
-        if (tokenId !== "0") return tokenId;
+        // tokenId 0 is valid — it's the first minted NFT on a fresh Hardhat node
+        return tokenId;
       }
     }
   } catch (_) {}
@@ -151,12 +156,15 @@ async function approveRequest(req, res) {
           const nftContract = getPropertyNFT();
           const approveTx = await nftContract.approveRequest(BigInt(onChainReqId));
           const approveReceipt = await approveTx.wait();
-          txHash = approveReceipt.hash;
+          // ethers v5: receipt.transactionHash (v6 uses receipt.hash)
+          txHash = approveReceipt.transactionHash ?? approveReceipt.hash ?? null;
           const extracted = extractMintedTokenId(approveReceipt);
           if (extracted) mintedTokenId = extracted;
           console.log(`[chain] Minted NFT tokenId=${mintedTokenId} txHash=${txHash}`);
         } catch (chainErr) {
           console.warn("[chain] approveRequest on-chain failed, DB-only:", chainErr.message);
+          // Reset signer singleton so stale nonce is dropped on next call
+          resetSignerSingleton();
           mintedTokenId = `db_${Date.now()}`;
         }
       } else {
@@ -172,8 +180,22 @@ async function approveRequest(req, res) {
           where: { id: request.propertyId },
           data: { tokenId: mintedTokenId, status: "MINTED", chainHash: metadataHash },
         }),
-        prisma.metadataVersion.create({
-          data: {
+        // upsert avoids P2002 on re-approval (version 1 may already exist from a partial run)
+        prisma.metadataVersion.upsert({
+          where: {
+            propertyId_versionNo: {
+              propertyId: request.propertyId,
+              versionNo:  1,
+            },
+          },
+          update: {
+            metadataHash,
+            imagesRootHash,
+            documentsRootHash,
+            metadataSnapshot: request.metadataSnapshot,
+            approvedBy:       req.govWallet || "admin",
+          },
+          create: {
             propertyId:       request.propertyId,
             versionNo:        1,
             metadataHash,

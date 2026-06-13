@@ -109,7 +109,7 @@ export function registryToProperty(
         ? 'RENT'
         : registry.isForSale
           ? 'SALE'
-          : 'SALE'; // default: treat approved registry properties as for sale
+          : 'NONE'; // not listed — owned but not on market
 
   // Use rent price if available and for-rent, otherwise sale price
   const displayPrice = registry.isForRent && registry.rentPriceEth && !registry.isForSale
@@ -129,8 +129,9 @@ export function registryToProperty(
     propertyType: mapPropertyType(registry.propertyType),
     listingType,
     investmentType: registry.isForRent && !registry.isForSale ? ['RENT'] : ['BUY'],
-    // All registry-approved properties are ACTIVE (browsable on the marketplace)
-    status: 'ACTIVE',
+    // Only show as ACTIVE on marketplace if actually listed for sale or rent
+    // Properties owned but not listed should not appear in marketplace browsing
+    status: (registry.isForSale || registry.isForRent) ? 'ACTIVE' : 'DRAFT',
     registryForSale: registry.isForSale,
     registryForRent: registry.isForRent,
     rentPrice: registry.rentPriceEth ? Number(registry.rentPriceEth) || 0 : undefined,

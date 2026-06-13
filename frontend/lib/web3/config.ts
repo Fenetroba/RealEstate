@@ -3,9 +3,17 @@
 /** =========================
  *  API CONFIG
  *  ========================= */
-export const NFT_API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
-  'http://localhost:5000';
+// When NEXT_PUBLIC_API_URL is set (e.g. http://localhost:5000/api), use it.
+// Otherwise fall back to dynamic detection so network access (192.168.x.x) works too.
+export const NFT_API_BASE_URL = (() => {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '');
+  if (configured) return configured;
+  // Client-side: use the same hostname the browser is on, backend on port 5000
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:5000/api`;
+  }
+  return 'http://localhost:5000/api';
+})();
 
 /** =========================
  *  BLOCKCHAIN CONFIG

@@ -17,23 +17,34 @@ const verifyRouter        = require("./routes/verify");
 const kycRouter           = require("./routes/kyc");
 const notificationsRouter = require("./routes/notifications");
 const analyticsRouter     = require("./routes/analytics");
+const supportRouter       = require("./routes/support");
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-const allowedOrigins = (process.env.FRONTEND_URL || "http://192.168.8.131:3000")
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
   .split(",")
   .map(o => o.trim());
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: ${origin}`));
+    // Allow requests with no origin (curl, Postman, same-origin server calls)
+    if (!origin) return callback(null, true);
+    // Exact match from FRONTEND_URL list
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any localhost or 192.168.x.x origin in development
+    if (
+      process.env.NODE_ENV !== "production" &&
+      (origin.includes("localhost") ||
+       origin.includes("127.0.0.1") ||
+       /^https?:\/\/192\.168\./.test(origin) ||
+       /^https?:\/\/10\./.test(origin))
+    ) {
+      return callback(null, true);
     }
+    callback(new Error(`CORS blocked: ${origin}`));
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "x-gov-wallet", "Authorization"],
@@ -56,6 +67,7 @@ app.use("/api/admin",         adminRouter);
 app.use("/api/verify",        verifyRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/analytics",    analyticsRouter);
+app.use("/api/support",      supportRouter);
 
 // Health check
 app.get("/api/health", (req, res) => {

@@ -50,10 +50,22 @@ let _signer = null;
 let _propertyNFT = null;
 let _cachedNFTAddress = null; // track address so we rebuild if it changes
 
+/**
+ * Reset signer and contract singletons — forces a fresh nonce on next call.
+ * Call this after a NONCE_EXPIRED error.
+ */
+function resetSignerSingleton() {
+  _signer     = null;
+  _propertyNFT = null;
+  _cachedNFTAddress = null;
+  // Keep _provider — no need to reconnect, just reset the signing wallet
+}
+
 function getProvider() {
   if (!_provider) {
     const rpcUrl = process.env.RPC_URL || "http://127.0.0.1:8545";
-    _provider = new ethers.JsonRpcProvider(rpcUrl);
+    // ethers v5 — provider is under ethers.providers
+    _provider = new ethers.providers.JsonRpcProvider(rpcUrl);
   }
   return _provider;
 }
@@ -154,23 +166,55 @@ function startMarketplaceListener(prisma) {
     const id = propertyId.toString();
     console.log(`[chain] PropertySold: token ${id} ${from} → ${to}`);
     try {
-      await prisma.property.update({
-        where: { tokenId: id },
-        data:  { ownerWallet: to.toLowerCase() },
+      const updated = await prisma.property.updateMany({
+        where: {
+          OR: [
+            { tokenId: id },
+            { tokenId: String(Number(id)) },
+          ],
+        },
+        data: {
+          ownerWallet: to.toLowerCase(),
+          isForSale:   false,   // de-list from marketplace after purchase
+          isForRent:   false,   // de-list rental too — new owner decides
+        },
       });
-      console.log(`[db] Updated owner of token ${id} to ${to}`);
+      if (updated.count > 0) {
+        console.log(`[db] Property token ${id} sold to ${to} — removed from marketplace`);
+      } else {
+        console.warn(`[db] No property found with tokenId "${id}" — ownership not updated in DB`);
+      }
     } catch (err) {
       console.error(`[db] Failed to update owner for token ${id}:`, err.message);
     }
   });
 
-  console.log("[chain] Marketplace event listener started (PropertySold)");
+  // When rented, mark isForRent=false so it doesn't show as available again
+  // (owner must explicitly re-list after tenancy ends)
+  contract.on("PropertyRented", async (propertyId, tenant) => {
+    const id = propertyId.toString();
+    console.log(`[chain] PropertyRented: token ${id} by tenant ${tenant}`);
+    try {
+      await prisma.property.updateMany({
+        where: {
+          OR: [{ tokenId: id }, { tokenId: String(Number(id)) }],
+        },
+        data: { isForRent: false },
+      });
+      console.log(`[db] Property token ${id} rented — removed from rental market`);
+    } catch (err) {
+      console.error(`[db] Failed to update rental status for token ${id}:`, err.message);
+    }
+  });
+
+  console.log("[chain] Marketplace event listener started (PropertySold, PropertyRented)");
 }
 
 module.exports = {
   getProvider,
   getSigner,
   getPropertyNFT,
+  resetSignerSingleton,
   // Kept for backwards compat — same as getPropertyNFT
   getMarketplace: getPropertyNFT,
   mintPropertyOnChain,

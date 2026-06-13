@@ -10,6 +10,7 @@ import {
   Building2,
   Home,
   House,
+  MessageCircle,
   Receipt,
   LogOut,
   ShieldCheck,
@@ -74,6 +75,7 @@ export const dashboardAdminNavGroups: DashboardNavGroup[] = [
     links: [
       { href: '/dashboard/property-approvals', label: 'Property approvals', icon: ClipboardCheck },
       { href: '/dashboard/users',              label: 'Users & KYC review',  icon: UsersRound     },
+      { href: '/dashboard/support',            label: 'Support inbox',       icon: MessageCircle  },
       { href: '/dashboard/admin-analytics',    label: 'Analytics',           icon: BarChart3      },
     ],
   },
