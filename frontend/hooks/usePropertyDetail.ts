@@ -32,9 +32,58 @@ async function resolvePropertyById(id: string): Promise<{
   ownershipHistory: RealOwnershipHistory[];
 }> {
 
-  // cached path — no documents available from cache
+  // Check cache for the base property data (avoids re-fetching the full catalog)
+  // but always load documents and history fresh — they're not cached.
   const cached = getPropertyFromCatalog(id);
-  if (cached) return { property: cached, documents: [], ownershipHistory: [] };
+
+  // Helper: fetch documents and ownership history for a known dbId
+  async function loadDocsAndHistory(dbId: string | null, isOnChain: boolean): Promise<{
+    documents: RealDocument[];
+    ownershipHistory: RealOwnershipHistory[];
+  }> {
+    let realDocuments: RealDocument[] = [];
+    let ownershipHistory: RealOwnershipHistory[] = [];
+
+    if (dbId) {
+      try {
+        const { fetchPropertyDocuments } = await import('@/lib/api/properties');
+        const docs = await fetchPropertyDocuments(dbId);
+        realDocuments = docs.map((doc, index) => ({
+          id:         String(index),
+          name:       doc.fileName ?? doc.name ?? `document-${index + 1}`,
+          mimeType:   doc.mimeType,
+          data:       doc.data,
+          uploadedAt: null,
+        }));
+      } catch { /* no docs */ }
+    }
+
+    if (isOnChain) {
+      try {
+        const contract = getReadOnlyRegistryContract();
+        if (contract) {
+          const { fetchOwnershipHistory } = await import('@/lib/web3/registry-contract');
+          const history = await fetchOwnershipHistory(contract, id);
+          ownershipHistory = history.map((h) => ({
+            from:      String(h.from ?? ''),
+            to:        String(h.to ?? ''),
+            price:     String(h.price ?? '0'),
+            timestamp: typeof h.timestamp === 'bigint' ? Number(h.timestamp) : (h.timestamp ?? 0),
+          }));
+        }
+      } catch { /* no history */ }
+    }
+
+    return { documents: realDocuments, ownershipHistory };
+  }
+
+  // Fast path: property is cached — still load docs/history fresh
+  if (cached) {
+    const dbId = cached.blockchain?.dbId ?? null;
+    const isOnChain = dbId != null && /^\d+$/.test(id);
+    const { documents, ownershipHistory } = await loadDocsAndHistory(dbId, isOnChain);
+    return { property: cached, documents, ownershipHistory };
+  }
 
   const contract = getReadOnlyRegistryContract();
   if (contract) {
@@ -153,9 +202,9 @@ async function resolvePropertyById(id: string): Promise<{
             const { fetchOwnershipHistory } = await import('@/lib/web3/registry-contract');
             const history = await fetchOwnershipHistory(contract, id);
             ownershipHistory = history.map((h) => ({
-              from: h.from,
-              to: h.to,
-              price: String(h.price ?? '0'),
+              from:      String(h.from ?? ''),
+              to:        String(h.to ?? ''),
+              price:     String(h.price ?? '0'),
               timestamp: typeof h.timestamp === 'bigint' ? Number(h.timestamp) : (h.timestamp ?? 0),
             }));
           } catch { /* no history */ }
@@ -244,6 +293,7 @@ export function usePropertyDetail(id: string | undefined) {
   const [documents, setDocuments] = useState<RealDocument[]>([]);
   const [ownershipHistory, setOwnershipHistory] = useState<RealOwnershipHistory[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [docsLoading, setDocsLoading] = useState(true);
 
   useEffect(() => {
     if (!id) {
@@ -251,11 +301,13 @@ export function usePropertyDetail(id: string | undefined) {
       setDocuments([]);
       setOwnershipHistory([]);
       setLoading(false);
+      setDocsLoading(false);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
+    setDocsLoading(true);
 
     void resolvePropertyById(id)
       .then((result) => {
@@ -266,11 +318,14 @@ export function usePropertyDetail(id: string | undefined) {
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setDocsLoading(false);
+        }
       });
 
     return () => { cancelled = true; };
   }, [id]);
 
-  return { property, documents, ownershipHistory, loading };
+  return { property, documents, ownershipHistory, loading, docsLoading };
 }

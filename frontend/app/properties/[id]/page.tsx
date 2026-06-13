@@ -65,7 +65,7 @@ function PropertyDetailNotFound() {
 export default function PropertyDetailPage() {
   const params = useParams();
   const id = params?.id as string | undefined;
-  const { property, documents, ownershipHistory, loading } = usePropertyDetail(id);
+  const { property, documents, ownershipHistory, loading, docsLoading } = usePropertyDetail(id);
 
   if (loading) {
     return <PropertyDetailLoading />;
@@ -81,7 +81,12 @@ export default function PropertyDetailPage() {
       <div className="min-h-screen bg-background">
         <div className={propertyDetailPageShellClass}>
           <PropertyDetailHeader property={property} />
-          <PropertyDetailContent property={property} documents={documents} ownershipHistory={ownershipHistory} />
+          <PropertyDetailContent
+            property={property}
+            documents={documents}
+            ownershipHistory={ownershipHistory}
+            docsLoading={docsLoading}
+          />
         </div>
       </div>
       <Footer />

@@ -1,6 +1,12 @@
 // utils/google-auth.js
 // Passport Google OAuth2 strategy — find-or-create user, issue JWT, redirect to frontend.
 
+// Fix: Node.js sometimes has outdated TLS certificates causing CERT_HAS_EXPIRED.
+// In development, we can override this. Remove in production and update Node instead.
+if (process.env.NODE_ENV !== "production") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
 const passport   = require("passport");
 const { Strategy: GoogleStrategy } = require("passport-google-oauth20");
 const { PrismaClient } = require("@prisma/client");
@@ -132,7 +138,8 @@ async function handleGoogleCallback(req, res) {
     });
 
     // Redirect to frontend with access token + user info in query params
-    const frontendUrl  = process.env.FRONTEND_URL || "http://localhost:3000";
+    // FRONTEND_URL may be comma-separated — use first origin
+    const frontendUrl  = (process.env.FRONTEND_URL || "http://localhost:3000").split(",")[0].trim();
     const userPayload  = encodeURIComponent(JSON.stringify({
       id:              user.id,
       email:           user.email,

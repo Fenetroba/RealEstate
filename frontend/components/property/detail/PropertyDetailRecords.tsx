@@ -1,4 +1,4 @@
-import { Download, ExternalLink, FileText, History, Shield } from 'lucide-react';
+import { Download, ExternalLink, FileText, History, Loader2, Shield } from 'lucide-react';
 
 import { Button } from '@/components/ui/Button';
 import { propertyDetailCopy, propertyDetailLayout } from '@/lib/constants/property-detail';
@@ -14,16 +14,21 @@ interface PropertyDetailRecordsProps {
   property: Property;
   documents: RealDocument[];
   ownershipHistory: RealOwnershipHistory[];
+  docsLoading?: boolean;
 }
 
-export default function PropertyDetailRecords({ property, documents, ownershipHistory }: PropertyDetailRecordsProps) {
+export default function PropertyDetailRecords({ property, documents, ownershipHistory, docsLoading = false }: PropertyDetailRecordsProps) {
   const registrySummary = getPublicRegistrySummary(property);
   const explorerUrl = getPublicRegistryExplorerUrl(property);
   const soldPercent = getFractionalSoldPercent(property);
-  const hasDocuments = documents.length > 0 || property.documents.length > 0;
-  const useRealDocs  = documents.length > 0;
-  const hasHistory = ownershipHistory.length > 0 || property.timeline.length > 0;
-  const useRealHistory = ownershipHistory.length > 0;
+
+  // While loading, show placeholders instead of falling back to empty/mock data
+  const hasRealDocs    = documents.length > 0;
+  const hasRealHistory = ownershipHistory.length > 0;
+  const hasDocuments   = hasRealDocs || (property.documents?.length ?? 0) > 0;
+  const hasHistory     = hasRealHistory || (property.timeline?.length ?? 0) > 0;
+  const useRealDocs    = hasRealDocs;
+  const useRealHistory = hasRealHistory;
 
   return (
     <div className="space-y-6 2xl:space-y-8 3xl:space-y-8 4xl:space-y-10">

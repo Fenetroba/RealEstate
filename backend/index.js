@@ -2,6 +2,12 @@
 // Express app entry point for the real estate backend.
 
 require("dotenv").config();
+
+// Fix TLS certificate verification in development
+// (Node.js v22 rejects some intermediate certs that Google OAuth uses)
+if (process.env.NODE_ENV !== "production") {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");

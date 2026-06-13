@@ -19,9 +19,10 @@ interface PropertyDetailContentProps {
   property: Property;
   documents: RealDocument[];
   ownershipHistory: RealOwnershipHistory[];
+  docsLoading?: boolean;
 }
 
-export default function PropertyDetailContent({ property, documents, ownershipHistory }: PropertyDetailContentProps) {
+export default function PropertyDetailContent({ property, documents, ownershipHistory, docsLoading = false }: PropertyDetailContentProps) {
   const [currentImage, setCurrentImage] = useState(0);
 
   const images = property.media.images;
@@ -45,7 +46,7 @@ export default function PropertyDetailContent({ property, documents, ownershipHi
 
           <PropertyDetailLocation property={property} />
 
-          <PropertyDetailRecords property={property} documents={documents} ownershipHistory={ownershipHistory} />
+          <PropertyDetailRecords property={property} documents={documents} ownershipHistory={ownershipHistory} docsLoading={docsLoading} />
         </div>
 
         <PropertyDetailSidebar property={property} />
