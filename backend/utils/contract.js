@@ -26,6 +26,12 @@ const PROPERTY_NFT_ABI = [
   // View: admin check
   "function isAdmin(address account) external view returns (bool)",
 
+  // View: read a single request by index (to check status before approving)
+  "function requests(uint256 index) external view returns (uint256 id, address requester, tuple(string name, string location, string propertyType, uint256 price, bool isForSale, bytes32 metadataHash, bytes32 imagesRootHash, bytes32 documentsRootHash, uint256 bedrooms, uint256 bathrooms, uint256 sqft, uint256 parking, uint256 floors, uint256 yearBuilt) details, uint8 status, string declineReason)",
+
+  // View: total properties minted (used to infer last tokenId when re-approving)
+  "function getTotalProperties() external view returns (uint256)",
+
   // Rental functions
   "function listForRent(uint256 propertyId, uint256 rentPriceInEther) external",
   "function rentProperty(uint256 propertyId) external payable",

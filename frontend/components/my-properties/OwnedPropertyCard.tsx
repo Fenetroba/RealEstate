@@ -11,6 +11,7 @@ import { DashboardEntityCard } from '@/components/dashboard/DashboardEntityCard'
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { TransferModal } from '@/components/my-properties/TransferModal';
+import { ListPropertyModal } from '@/components/my-properties/ListPropertyModal';
 import { formatPropertyTypeLabel, formatRequestPrice } from '@/lib/registry-request-labels';
 import { fetchPropertyImages } from '@/lib/api/properties';
 import { printOwnershipCertificate } from '@/lib/ownership-certificate';
@@ -45,6 +46,7 @@ export function OwnedPropertyCard({
   );
   const [copied,           setCopied]           = useState(false);
   const [transferOpen,     setTransferOpen]     = useState(false);
+  const [listOpen,         setListOpen]         = useState(false);
   const [delisting,        setDelisting]        = useState(false);
   const walletAddress = useAppSelector((s) => s.wallet.address);
 
@@ -238,15 +240,15 @@ export function OwnedPropertyCard({
 
               {/* 8. List on marketplace — only when not listed */}
               {!isListed && (
-                <Link href={`/properties/${property.id}`} className="ml-auto">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    leftIcon={<Tag className="size-4" />}
-                  >
-                    List on marketplace
-                  </Button>
-                </Link>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Tag className="size-4" />}
+                  onClick={() => setListOpen(true)}
+                  className="ml-auto"
+                >
+                  List on marketplace
+                </Button>
               )}
             </div>
           </div>
@@ -261,6 +263,19 @@ export function OwnedPropertyCard({
         writeContract={writeContract}
         onClose={() => setTransferOpen(false)}
         onSuccess={() => { setTransferOpen(false); onRefresh(); }}
+      />
+
+      {/* List on marketplace modal */}
+      <ListPropertyModal
+        isOpen={listOpen}
+        tokenId={property.id}
+        dbPropertyId={dbPropertyId}
+        propertyName={property.name}
+        currentPrice={property.priceEth}
+        writeContract={writeContract}
+        walletAddress={walletAddress}
+        onClose={() => setListOpen(false)}
+        onSuccess={() => { setListOpen(false); onRefresh(); }}
       />
     </>
   );

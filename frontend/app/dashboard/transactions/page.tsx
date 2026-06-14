@@ -1,85 +1,166 @@
 'use client';
 
 import Link from 'next/link';
-import { ExternalLink, FileText, Loader2, RefreshCw, Wallet } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowDownLeft, ArrowUpRight, ExternalLink,
+  FileText, Loader2, RefreshCw, Sparkles, Wallet,
+} from 'lucide-react';
 
-import { DashboardDataTable, DashboardTableBody, DashboardTableHead, DashboardTableRow, DashboardTd, DashboardTh } from '@/components/dashboard/DashboardDataTable';
 import { DashboardEmptyState } from '@/components/dashboard/DashboardEmptyState';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { DashboardPanel } from '@/components/dashboard/DashboardPanel';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
-import {
-  DashboardTableAction,
-  DashboardTableActions,
-} from '@/components/dashboard/DashboardTableActions';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { useAppSelector } from '@/store/hooks';
 import { useWeb3 } from '@/contexts/Web3Context';
 import {
-  formatTransferAmountEth,
-  useWalletRegistryTransfers,
-  type WalletTransferRole,
-} from '@/hooks/useWalletRegistryTransfers';
-import { getExplorerTxUrl } from '@/lib/registry-explorer';
-import { formatDate, truncateAddress } from '@/lib/utils';
+  getReadOnlyRegistryContract,
+  fetchOwnershipHistory,
+} from '@/lib/web3/registry-contract';
+import { fetchPropertyCatalog } from '@/lib/api/properties';
+import { formatRelativeTime, truncateAddress } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
-const roleLabels: Record<WalletTransferRole, string> = {
-  minted: 'Minted',
-  received: 'Received',
-  sent: 'Sent',
-};
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-const roleBadgeVariant = {
-  minted: 'navy' as const,
-  received: 'success' as const,
-  sent: 'warning' as const,
-};
-
-function ConnectGate() {
-  return (
-    <DashboardEmptyState
-      icon={Wallet}
-      title="Connect your wallet"
-      description="We show registry transfer records where your address is the sender or receiver (demo history is attached per NFT in the catalog)."
-      action={
-        <div className="flex justify-center">
-          <WalletConnectControl fullWidth />
-        </div>
-      }
-    />
-  );
+interface TxRow {
+  tokenId:       string;
+  propertyName:  string;
+  role:          'minted' | 'received' | 'sent';
+  from:          string;
+  to:            string;
+  priceEth:      string;
+  timestamp:     number;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function ethFromBigish(raw: bigint | number | string | undefined): string {
+  if (!raw) return '—';
+  try {
+    const wei = typeof raw === 'bigint' ? raw : BigInt(String(raw));
+    if (wei === 0n) return '—';
+    // Convert from wei to ETH
+    const eth = Number(wei) / 1e18;
+    return eth > 0 ? `${eth.toLocaleString(undefined, { maximumFractionDigits: 6 })} ETH` : '—';
+  } catch {
+    return '—';
+  }
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function TransactionsPage() {
-  const {
-    transfers,
-    loading,
-    refreshing,
-    chainError,
-    mockMode,
-    refresh,
-    isConnected,
-  } = useWalletRegistryTransfers();
+  const walletAddress = useAppSelector((s) => s.wallet.address);
+  const isConnected   = useAppSelector((s) => s.wallet.isConnected);
+  const { contract: signerContract } = useWeb3();
+
+  const [rows,    setRows]    = useState<TxRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!walletAddress) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const wallet = walletAddress.toLowerCase();
+      const zero   = '0x0000000000000000000000000000000000000000';
+
+      // Get DB catalog to map tokenId → property name
+      const catalog = await fetchPropertyCatalog();
+      const nameMap: Record<string, string> = {};
+      for (const row of catalog.rows) {
+        const r = row as Record<string, unknown>;
+        const tid = String(r.tokenId ?? r.token_id ?? '');
+        if (tid) nameMap[tid] = String(r.name ?? `Property #${tid}`);
+      }
+
+      const contract = signerContract ?? getReadOnlyRegistryContract();
+      if (!contract) {
+        setError('Connect your wallet or configure the contract address to load activity.');
+        return;
+      }
+
+      // Get total NFTs on chain
+      let total = 0;
+      try {
+        const t = await contract.getTotalProperties();
+        total = Number(t);
+      } catch { total = 0; }
+
+      const result: TxRow[] = [];
+
+      // Fetch ownership history for each token
+      await Promise.all(
+        Array.from({ length: total }, (_, i) => String(i)).map(async (tid) => {
+          try {
+            const history = await fetchOwnershipHistory(contract, tid);
+            for (const h of history) {
+              const from = String(h.from ?? '').toLowerCase();
+              const to   = String(h.to   ?? '').toLowerCase();
+
+              let role: TxRow['role'] | null = null;
+              if (from === zero && to === wallet) role = 'minted';
+              else if (to === wallet)              role = 'received';
+              else if (from === wallet)            role = 'sent';
+
+              if (!role) continue;
+
+              result.push({
+                tokenId:      tid,
+                propertyName: nameMap[tid] ?? `Property #${tid}`,
+                role,
+                from:         String(h.from ?? ''),
+                to:           String(h.to   ?? ''),
+                priceEth:     ethFromBigish(h.price as bigint | number | string | undefined),
+                timestamp:    typeof h.timestamp === 'bigint'
+                  ? Number(h.timestamp) * 1000
+                  : (Number(h.timestamp ?? 0)) * 1000,
+              });
+            }
+          } catch { /* skip token */ }
+        }),
+      );
+
+      // Sort newest first
+      result.sort((a, b) => b.timestamp - a.timestamp);
+      setRows(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load activity');
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, signerContract]);
+
+  useEffect(() => {
+    if (isConnected && walletAddress) void load();
+  }, [isConnected, walletAddress, load]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const roleConfig = {
+    minted:   { label: 'Minted',   icon: <Sparkles    className="size-3.5" />, variant: 'default'  as const, color: 'text-blue-600'  },
+    received: { label: 'Received', icon: <ArrowDownLeft className="size-3.5" />, variant: 'verified' as const, color: 'text-green-600' },
+    sent:     { label: 'Sent',     icon: <ArrowUpRight  className="size-3.5" />, variant: 'warning'  as const, color: 'text-amber-600' },
+  };
 
   return (
     <DashboardShell>
       <DashboardHeader
         title="On-chain activity"
-        description="Transfer history from the property registry for NFTs in the catalog that involve your wallet. Amounts are in ETH when recorded."
+        description="Property transfer history for your wallet — purchases, sales, and mints from the blockchain."
         actions={
           isConnected ? (
             <Button
               variant="outline"
               size="sm"
-              leftIcon={
-                refreshing || loading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )
-              }
-              onClick={() => void refresh()}
-              disabled={loading || refreshing}
+              leftIcon={loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              onClick={() => void load()}
+              disabled={loading}
             >
               Refresh
             </Button>
@@ -87,107 +168,89 @@ export default function TransactionsPage() {
         }
       />
 
-      {mockMode && isConnected ? (
-        <p className="-mt-4 mb-6 text-xs text-muted">
-          Demo mode — transfer rows come from registry mock metadata, not a live indexer.
-        </p>
-      ) : null}
-
       {!isConnected ? (
-        <ConnectGate />
+        <DashboardEmptyState
+          icon={Wallet}
+          title="Connect your wallet"
+          description="Connect MetaMask to see your on-chain property transfer history."
+        />
+      ) : error ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
       ) : (
-        <>
-          {chainError ? (
-            <div
-              className="mb-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-              role="alert"
-            >
-              {chainError}
+        <DashboardPanel title={`Transfers (${rows.length})`} bodyClassName="p-0">
+          {loading && rows.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+              <Loader2 className="size-5 animate-spin" />
+              Loading on-chain activity…
             </div>
-          ) : null}
+          ) : rows.length === 0 ? (
+            <DashboardEmptyState
+              icon={FileText}
+              title="No on-chain transactions yet"
+              description="Buy, sell, or receive a property NFT to see your transfer history here."
+              className="border-0"
+              action={
+                <Link href="/properties">
+                  <Button variant="primary">Browse marketplace</Button>
+                </Link>
+              }
+            />
+          ) : (
+            <div className="divide-y divide-border">
+              {rows.map((row, i) => {
+                const cfg = roleConfig[row.role];
+                return (
+                  <div key={i} className="flex items-center gap-4 px-5 py-4">
+                    {/* Icon */}
+                    <div className={cn(
+                      'flex size-9 shrink-0 items-center justify-center rounded-full',
+                      row.role === 'received' ? 'bg-green-100 dark:bg-green-900/30'
+                      : row.role === 'sent'   ? 'bg-amber-100 dark:bg-amber-900/30'
+                      : 'bg-blue-100 dark:bg-blue-900/30',
+                    )}>
+                      <span className={cfg.color}>{cfg.icon}</span>
+                    </div>
 
-          <DashboardPanel title={`Transfers (${transfers.length})`} bodyClassName="p-0">
-            {loading && transfers.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-                <Loader2 className="size-5 animate-spin" aria-hidden />
-                Loading activity…
-              </div>
-            ) : transfers.length === 0 ? (
-              <DashboardEmptyState
-                icon={FileText}
-                title="No transfers for your wallet"
-                description="Buy, rent, or receive a property NFT to see transfers here. Purchases and listings happen on each property page in ETH."
-                className="border-0"
-                action={
-                  <Link href="/properties">
-                    <Button variant="primary">View marketplace</Button>
-                  </Link>
-                }
-              />
-            ) : (
-              <DashboardDataTable>
-                <DashboardTableHead>
-                  <tr>
-                    <DashboardTh>Property</DashboardTh>
-                    <DashboardTh>Type</DashboardTh>
-                    <DashboardTh>Date</DashboardTh>
-                    <DashboardTh>Amount</DashboardTh>
-                    <DashboardTh>Tx hash</DashboardTh>
-                    <DashboardTh className="text-right">Actions</DashboardTh>
-                  </tr>
-                </DashboardTableHead>
-                <DashboardTableBody>
-                  {transfers.map((row) => {
-                    const explorerUrl = getExplorerTxUrl(row.transfer.txHash);
-                    return (
-                      <DashboardTableRow key={`${row.tokenId}-${row.transfer.txHash}`}>
-                        <DashboardTd>
-                          <Link
-                            href={`/properties/${row.tokenId}`}
-                            className="font-medium text-foreground hover:text-accent"
-                          >
-                            {row.propertyTitle}
-                          </Link>
-                          <p className="text-xs text-muted">NFT #{row.tokenId}</p>
-                        </DashboardTd>
-                        <DashboardTd>
-                          <Badge variant={roleBadgeVariant[row.role]} size="sm">
-                            {roleLabels[row.role]}
-                          </Badge>
-                        </DashboardTd>
-                        <DashboardTd className="whitespace-nowrap text-muted">
-                          {formatDate(row.transfer.timestamp)}
-                        </DashboardTd>
-                        <DashboardTd className="whitespace-nowrap font-semibold text-foreground">
-                          {formatTransferAmountEth(row.transfer.price)}
-                        </DashboardTd>
-                        <DashboardTd>
-                          <span className="font-mono text-xs text-muted">
-                            {truncateAddress(row.transfer.txHash)}
-                          </span>
-                        </DashboardTd>
-                        <DashboardTd>
-                          <DashboardTableActions>
-                            {explorerUrl ? (
-                              <DashboardTableAction
-                                label="View on explorer"
-                                href={explorerUrl}
-                                external
-                                icon={<ExternalLink className="size-4" />}
-                              />
-                            ) : (
-                              <span className="text-xs text-muted">—</span>
-                            )}
-                          </DashboardTableActions>
-                        </DashboardTd>
-                      </DashboardTableRow>
-                    );
-                  })}
-                </DashboardTableBody>
-              </DashboardDataTable>
-            )}
-          </DashboardPanel>
-        </>
+                    {/* Property info */}
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/properties/${row.tokenId}`}
+                        className="font-semibold text-foreground hover:text-accent truncate block"
+                      >
+                        {row.propertyName}
+                      </Link>
+                      <p className="text-xs text-muted">
+                        {row.role === 'sent'
+                          ? `To ${truncateAddress(row.to)}`
+                          : row.role === 'minted'
+                          ? 'Minted to your wallet'
+                          : `From ${truncateAddress(row.from)}`}
+                      </p>
+                    </div>
+
+                    {/* Badge */}
+                    <Badge variant={cfg.variant} size="sm" className="shrink-0 gap-1">
+                      {cfg.icon}
+                      {cfg.label}
+                    </Badge>
+
+                    {/* Amount */}
+                    <p className={cn('shrink-0 text-sm font-semibold', cfg.color)}>
+                      {row.priceEth}
+                    </p>
+
+                    {/* Date */}
+                    <p className="shrink-0 text-xs text-muted hidden sm:block">
+                      {row.timestamp > 0 ? formatRelativeTime(new Date(row.timestamp).toISOString()) : '—'}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DashboardPanel>
       )}
     </DashboardShell>
   );

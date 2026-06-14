@@ -171,20 +171,7 @@ export default function MyPropertiesPage() {
               </div>
             ) : null}
 
-            {/* Purchased / recently acquired banner */}
-            {!loading && owned.length > 0 && (
-              <div className="rounded-2xl border border-green-200 bg-green-50 px-5 py-4 dark:border-green-800 dark:bg-green-950/30">
-                <p className="mb-2 font-semibold text-green-800 dark:text-green-300">
-                  🎉 You own {owned.length} registered propert{owned.length === 1 ? 'y' : 'ies'}
-                </p>
-                <ul className="space-y-1 text-sm text-green-700 dark:text-green-400">
-                  <li>• <strong>List for sale</strong> — go to a property detail page and click "List for sale"</li>
-                  <li>• <strong>List for rent</strong> — click "List for rent" on any property you own</li>
-                  <li>• <strong>Request update</strong> — use the "Submit update" button below to update metadata</li>
-                  <li>• <strong>View history</strong> — click "Version history" to see all metadata versions on-chain</li>
-                </ul>
-              </div>
-            )}
+        
 
             {loading && owned.length === 0 && !chainError ? (
               <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">

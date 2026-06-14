@@ -38,13 +38,13 @@ export function useMyProperties() {
         return {
           id:               String(r.tokenId ?? r.token_id ?? ''),
           owner:            String(r.ownerWallet ?? r.owner_wallet ?? ''),
-          name:             row.name ?? '',
-          location:         row.location ?? '',
-          propertyType:     row.propertyType ?? '',
+          name:             String(row.name ?? ''),
+          location:         String(row.location ?? ''),
+          propertyType:     String(row.propertyType ?? ''),
           priceEth:         String(row.price ?? '0'),
           priceWei:         BigInt(Math.floor(Number(row.price ?? 0))) * 1_000_000_000_000_000_000n,
-          isForSale:        false,
-          isForRent:        false,
+          isForSale:        Boolean(r.isForSale),
+          isForRent:        Boolean(r.isForRent),
           bedrooms:         Number(row.bedrooms ?? 0),
           bathrooms:        Number(row.bathrooms ?? 0),
           sqft:             Number(row.squareFeet ?? 0),
@@ -54,9 +54,11 @@ export function useMyProperties() {
           metadataHash:     String(r.metadataHash ?? ''),
           imagesRootHash:   String(r.imagesRootHash ?? ''),
           documentsRootHash:String(r.documentsRootHash ?? ''),
-        };
-      }).filter((p) => Boolean(p.id)); // only include items with a tokenId
-    setDbOwned(mapped);
+          // Store the DB UUID so image fetching works without needing propertyDbMap
+          _dbId:            String(r.id ?? ''),
+        } as RegistryProperty & { _dbId: string };
+      }).filter((p) => Boolean(p.id));
+      setDbOwned(mapped);
     } catch {
       setDbOwned([]);
     } finally {
@@ -87,8 +89,13 @@ export function useMyProperties() {
     await Promise.all([refreshChain(), loadDbOwned()]);
   }, [refreshChain, loadDbOwned]);
 
-  const getDbPropertyId = (tokenId: string) =>
-    resolveDbPropertyId(propertyDbMap, tokenId);
+  const getDbPropertyId = (tokenId: string) => {
+    // First check if the owned property has a direct _dbId stored (faster, works for buyers)
+    const fromOwned = owned.find((p) => p.id === tokenId) as (RegistryProperty & { _dbId?: string }) | undefined;
+    if (fromOwned?._dbId) return fromOwned._dbId;
+    // Fall back to the chain catalog map
+    return resolveDbPropertyId(propertyDbMap, tokenId);
+  };
 
   return {
     owned,

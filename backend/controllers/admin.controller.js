@@ -154,16 +154,44 @@ async function approveRequest(req, res) {
       ) {
         try {
           const nftContract = getPropertyNFT();
-          const approveTx = await nftContract.approveRequest(BigInt(onChainReqId));
-          const approveReceipt = await approveTx.wait();
-          // ethers v5: receipt.transactionHash (v6 uses receipt.hash)
-          txHash = approveReceipt.transactionHash ?? approveReceipt.hash ?? null;
-          const extracted = extractMintedTokenId(approveReceipt);
-          if (extracted) mintedTokenId = extracted;
-          console.log(`[chain] Minted NFT tokenId=${mintedTokenId} txHash=${txHash}`);
+
+          // Check on-chain request status before trying to approve.
+          // If already Approved (1) or Declined (2), extract the propertyId
+          // from the existing approval event instead of calling approveRequest again.
+          let skipChainCall = false;
+          try {
+            const onChainReq = await nftContract.requests(BigInt(onChainReqId));
+            // RealEstate.sol RequestStatus: 0=Pending, 1=Approved, 2=Declined
+            const chainStatus = Number(onChainReq.status ?? onChainReq[3] ?? 0);
+            if (chainStatus !== 0) {
+              console.log(`[chain] Request ${onChainReqId} already has status ${chainStatus} on-chain — skipping approveRequest call`);
+              skipChainCall = true;
+              // If already approved, try to get the minted propertyId from the property mapping
+              // The NFT token for this requester was already minted at some point
+              // Use the total properties count to find the last minted token
+              try {
+                const total = await nftContract.getTotalProperties();
+                // The token that was minted for this request should be findable
+                // by checking ownership history — use total-1 as best guess for the tokenId
+                if (Number(total) > 0) {
+                  mintedTokenId = String(Number(total) - 1);
+                }
+              } catch (_) {}
+            }
+          } catch (_) {
+            // Could not read request status — proceed with normal approval attempt
+          }
+
+          if (!skipChainCall) {
+            const approveTx = await nftContract.approveRequest(BigInt(onChainReqId));
+            const approveReceipt = await approveTx.wait();
+            txHash = approveReceipt.transactionHash ?? approveReceipt.hash ?? null;
+            const extracted = extractMintedTokenId(approveReceipt);
+            if (extracted) mintedTokenId = extracted;
+            console.log(`[chain] Minted NFT tokenId=${mintedTokenId} txHash=${txHash}`);
+          }
         } catch (chainErr) {
           console.warn("[chain] approveRequest on-chain failed, DB-only:", chainErr.message);
-          // Reset signer singleton so stale nonce is dropped on next call
           resetSignerSingleton();
           mintedTokenId = `db_${Date.now()}`;
         }

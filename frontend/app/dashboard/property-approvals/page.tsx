@@ -420,14 +420,26 @@ export default function PropertyApprovalsPage() {
   const [declineReason, setDeclineReason] = useState('');
 
   const isAdmin = user?.role === 'ADMIN';
+  // allRequests holds the complete unfiltered list — used for accurate counts.
+  // requests holds the currently displayed (filtered) subset.
+  const [allRequests, setAllRequests] = useState<RequestRow[]>([]);
+
+  
 
   const load = useCallback(async (overrideFilter?: Filter) => {
     setLoading(true);
     const activeFilter = overrideFilter ?? filter;
     try {
-      const params = activeFilter !== 'ALL' ? `?status=${activeFilter}` : '';
-      const { data } = await apiClient.get(`/admin/db-requests${params}`);
-      setRequests(data.data ?? []);
+      // Always fetch ALL for the counts strip
+      const { data: allData } = await apiClient.get('/admin/db-requests');
+      const all: RequestRow[] = allData.data ?? [];
+      setAllRequests(all);
+
+      // Then apply the active filter to the displayed list
+      const displayed = activeFilter === 'ALL'
+        ? all
+        : all.filter((r) => r.status === activeFilter);
+      setRequests(displayed);
     } catch {
       dispatch(addToast({ type: 'error', title: 'Failed to load requests' }));
     } finally {
@@ -467,7 +479,16 @@ export default function PropertyApprovalsPage() {
       await apiClient.post(`/admin/approve/${approveId}`, {});
       dispatch(addToast({ type: 'success', title: 'Property approved', message: 'The property is now published.' }));
       setApproveId(null);
+      // Optimistically update allRequests so counts and list update immediately
+      setAllRequests((prev) =>
+        prev.map((r) => r.id === approveId ? { ...r, status: 'APPROVED' as const, reviewedAt: new Date().toISOString() } : r),
+      );
       setFilter('ALL');
+      // Show all requests including the newly approved one
+      setRequests((prev) =>
+        prev.map((r) => r.id === approveId ? { ...r, status: 'APPROVED' as const, reviewedAt: new Date().toISOString() } : r),
+      );
+      // Then reload from server to get accurate data (tokenId etc.)
       await load('ALL');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.error
@@ -497,11 +518,10 @@ export default function PropertyApprovalsPage() {
     }
   };
 
-  const counts = {
-    PENDING:  requests.filter((r) => r.status === 'PENDING').length,
-    APPROVED: requests.filter((r) => r.status === 'APPROVED').length,
-    DECLINED: requests.filter((r) => r.status === 'DECLINED').length,
-    ALL:      requests.length,
+  // When user clicks a filter tab, apply client-side without re-fetching
+  const handleFilterChange = (f: Filter) => {
+    setFilter(f);
+    setRequests(f === 'ALL' ? allRequests : allRequests.filter((r) => r.status === f));
   };
 
   if (!isAdmin) {
@@ -535,13 +555,13 @@ export default function PropertyApprovalsPage() {
           }
         />
 
-        {/* Stats strip */}
+        {/* Stats strip — always computed from the full allRequests list */}
         <div className="flex flex-wrap gap-3">
           {[
-            { label: 'Pending',  value: counts.PENDING,  color: 'text-amber-600'  },
-            { label: 'Approved', value: counts.APPROVED, color: 'text-green-600'  },
-            { label: 'Declined', value: counts.DECLINED, color: 'text-destructive' },
-            { label: 'Total',    value: counts.ALL,       color: 'text-foreground'  },
+            { label: 'Pending',  value: allRequests.filter((r) => r.status === 'PENDING').length,  color: 'text-amber-600'  },
+            { label: 'Approved', value: allRequests.filter((r) => r.status === 'APPROVED').length, color: 'text-green-600'  },
+            { label: 'Declined', value: allRequests.filter((r) => r.status === 'DECLINED').length, color: 'text-destructive' },
+            { label: 'Total',    value: allRequests.length,                                         color: 'text-foreground'  },
           ].map((s) => (
             <div key={s.label} className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-3">
               <span className={cn('text-xl font-bold', s.color)}>{s.value}</span>
@@ -550,13 +570,13 @@ export default function PropertyApprovalsPage() {
           ))}
         </div>
 
-        {/* Filter tabs */}
+        {/* Filter tabs — switch view using client-side filter, no re-fetch */}
         <div className="flex gap-1 overflow-x-auto border-b border-border pb-px">
           {FILTERS.map((f) => (
             <button
               key={f.id}
               type="button"
-              onClick={() => setFilter(f.id)}
+              onClick={() => handleFilterChange(f.id)}
               className={cn(
                 '-mb-px shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors',
                 filter === f.id
@@ -565,7 +585,11 @@ export default function PropertyApprovalsPage() {
               )}
             >
               {f.label}
-              <span className="ml-1.5 text-xs font-normal text-muted">({counts[f.id]})</span>
+              <span className="ml-1.5 text-xs font-normal text-muted">
+                ({f.id === 'ALL'
+                  ? allRequests.length
+                  : allRequests.filter((r) => r.status === f.id).length})
+              </span>
             </button>
           ))}
         </div>
@@ -658,18 +682,18 @@ export default function PropertyApprovalsPage() {
         tone="accent"
       />
 
-      {/* Decline dialog */}
-      <ConfirmDialog
+      {/* Decline dialog — uses FormDialog to support the reason textarea */}
+      <FormDialog
         isOpen={declineId !== null}
-        onClose={() => setDeclineId(null)}
-        onConfirm={() => void handleDecline()}
+        onClose={() => { setDeclineId(null); setDeclineReason(''); }}
+        onSubmit={() => void handleDecline()}
         title="Decline property request?"
         description="The user will be notified. They can resubmit after making corrections."
-        confirmLabel="Decline"
-        tone="danger"
-        confirmVariant="danger"
+        icon={XCircle}
+        submitLabel="Decline"
+        isLoading={busy === declineId}
       >
-        <div className="mt-3">
+        <div className="mt-1">
           <label className="block text-sm font-medium text-foreground mb-1">
             Reason <span className="text-muted font-normal">(optional)</span>
           </label>
@@ -681,7 +705,7 @@ export default function PropertyApprovalsPage() {
             onChange={(e) => setDeclineReason(e.target.value)}
           />
         </div>
-      </ConfirmDialog>
+      </FormDialog>
     </DashboardShell>
   );
 }

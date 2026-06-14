@@ -695,6 +695,71 @@ async function delistProperty(req, res) {
   }
 }
 
+/**
+ * POST /api/properties/:id/list
+ * List a property on the marketplace (set isForSale/isForRent + update price).
+ * Called by the owner after buying a property or when re-listing.
+ * Validates ownership and updates the DB.
+ */
+async function listPropertyOnMarket(req, res) {
+  try {
+    const { id } = req.params;
+    const { isForSale, isForRent, price, rentPrice, wallet } = req.body;
+    const userId = req.userId;
+
+    const property = await prisma.property.findUnique({
+      where: { id },
+      select: { id: true, ownerWallet: true, status: true },
+    });
+    if (!property) return res.status(404).json({ success: false, message: "Property not found" });
+    if (property.status !== "MINTED") {
+      return res.status(400).json({ success: false, message: "Property is not active" });
+    }
+
+    // Verify ownership
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletAddress: true },
+    });
+    const userWallets = [
+      user?.walletAddress?.toLowerCase(),
+      wallet?.toLowerCase(),
+    ].filter(Boolean);
+
+    if (!userWallets.includes(property.ownerWallet.toLowerCase())) {
+      return res.status(403).json({ success: false, message: "Only the owner can list this property" });
+    }
+
+    // Require at least one listing type
+    if (!isForSale && !isForRent) {
+      return res.status(400).json({ success: false, message: "Choose at least one listing type (sale or rent)" });
+    }
+    if (isForSale && !price) {
+      return res.status(400).json({ success: false, message: "Sale price is required when listing for sale" });
+    }
+    if (isForRent && !rentPrice) {
+      return res.status(400).json({ success: false, message: "Rent price is required when listing for rent" });
+    }
+
+    const updateData = {
+      isForSale: Boolean(isForSale),
+      isForRent:  Boolean(isForRent),
+    };
+    if (isForSale && price)     updateData.price     = price.toString();
+    if (isForRent && rentPrice) updateData.rentPrice = rentPrice.toString();
+
+    await prisma.property.update({
+      where: { id },
+      data:  updateData,
+    });
+
+    return res.json({ success: true, message: "Property listed on marketplace" });
+  } catch (err) {
+    console.error("[listPropertyOnMarket]", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   prepareRequest,
   confirmRequest,
@@ -706,4 +771,5 @@ module.exports = {
   getMyRequests,
   getMyProperties,
   delistProperty,
+  listPropertyOnMarket,
 };
